@@ -1,0 +1,27 @@
+#core/core/CamkeLists.txt
+
+add_library(core STATIC)
+add_library(core::core ALIAS core)
+
+
+target_sources(core
+    PRIVATE
+        public/core/terminal.h
+        private/terminal.cpp
+        public/core/handle.h
+        public/core/typedef.h
+        private/c_string.cpp
+        public/core/c_string.h
+        public/core/io.h
+        private/io.cpp
+)
+
+target_include_directories(core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/public
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/private
+        ${CMAKE_CURRENT_SOURCE_DIR}/public/core
+)
+
+

@@ -1,0 +1,14 @@
+#app/CmakeLists.txt
+
+add_library(my_app STATIC)
+
+target_sources(my_app
+    PRIVATE
+        main.cpp
+)
+
+target_link_libraries(my_app
+    PRIVATE
+        core::core
+        # physics::physics   <- uncomment when you need it
+)

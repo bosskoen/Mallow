@@ -1,0 +1,61 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Test",
+            "type": "shell",
+            "command": "tools/test.sh",
+            "windows" :{
+                "command": "tools\\test.bat"
+            }
+        },
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "tools/build.sh",
+            "windows": { "command": "tools\\build.bat" }
+        },
+        {
+            "label": "Clean",
+            "type": "shell",
+            "command": "tools/clean.sh",
+            "windows": { "command": "tools\\clean.bat" }
+        },
+        {
+            "label": "Clean_all",
+            "type": "shell",
+            "command": "tools/clean_all.sh",
+            "windows": { "command": "tools\\clean_all.bat" }
+        },
+        {
+            "label": "Run",
+            "type": "shell",
+            "command": "tools/run.sh",
+            "windows": { "command": "tools\\run.bat" }
+        },
+        {
+            "label": "Rebuild",
+            "type": "shell",
+            "command": "tools/rebuild.sh",
+            "windows": { "command": "tools\\rebuild.bat" }
+        },
+        {
+            "label": "Run_r",
+            "type": "shell",
+            "command": "tools/run.sh Release",
+            "windows": { "command": "tools\\run.bat Release" }
+        },
+        {
+            "label": "Rebuild_r",
+            "type": "shell",
+            "command": "tools/rebuild.sh Release",
+            "windows": { "command": "tools\\rebuild.bat Release" }
+        },
+        {
+            "label": "Build_r",
+            "type": "shell",
+            "command": "tools/build.sh Release",
+            "windows": { "command": "tools\\build.bat Release" }
+        },
+    ]
+}

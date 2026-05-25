@@ -1,0 +1,76 @@
+ {
+    "buttons":[
+               {
+            "id": "rebuild",
+            "label": "$(refresh) Rebuild",
+            "task": "Rebuild",
+            "tooltip": "Clean then build the project",
+            "alignment": "left",
+            "priority": 5
+        },
+        {
+            "id": "build",
+            "label": "$(tools) Build",
+            "task": "Build",
+            "tooltip": "Configure and build the project",
+            "alignment": "left",
+            "priority": 4
+        },
+        {
+            "id": "clean",
+            "label": "$(trash) Clean",
+            "task": "Clean",
+            "tooltip": "Wipe build folders",
+            "alignment": "left",
+            "priority": 3
+        },
+        {
+            "id": "clean-all",
+            "label": "$(trash) Clean_all",
+            "task": "Clean_all",
+            "tooltip": "Wipe all build folders",
+            "alignment": "right",
+            "priority": 101
+        },
+        {
+            "id": "test",
+            "label": "$(chip) Test",
+            "task": "Test",
+            "tooltip": "Build and run all tests",
+            "alignment": "left",
+            "priority": 2
+        },
+        {
+            "id": "run",
+            "label": "$(play) Run",
+            "task": "Run",
+            "tooltip": "Build and run the app",
+            "alignment": "left",
+            "priority": 1
+        },
+         {
+            "id": "run_r",
+            "label": "$(play) Run_release",
+            "task": "Run_r",
+            "tooltip": "Build and run the app",
+            "alignment": "right",
+            "priority": 104
+        },
+         {
+            "id": "build_r",
+            "label": "$(tools) Build_release",
+            "task": "Build_r",
+            "tooltip": "Configure and build the project",
+            "alignment": "right",
+            "priority": 102
+        },
+         {
+            "id": "rebuild_r",
+            "label": "$(refresh) Rebuild_release",
+            "task": "Rebuild_r",
+            "tooltip": "Clean then build the project",
+            "alignment": "right",
+            "priority": 103
+        }
+    ]
+}

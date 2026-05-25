@@ -1,0 +1,19 @@
+#root\CmakeLists.txt
+
+cmake_minimum_required(VERSION 3.21)
+project(MyProject VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/definitions.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/definitions.cmake)
+
+
+add_subdirectory(modules/core/core)
+
+
+
+add_subdirectory(app)
+add_subdirectory(modules/core/entry)

@@ -1,0 +1,14 @@
+{
+ "cmake.options.advanced": {
+        "build": { "statusBarVisibility": "hidden" },
+        "buildTarget": { "statusBarVisibility": "hidden" },
+        "launch": { "statusBarVisibility": "hidden" },
+        "launchTarget": { "statusBarVisibility": "hidden" },
+        "configure": { "statusBarVisibility": "hidden" },
+        "debug": { "statusBarVisibility": "hidden" },
+        "ctest": { "statusBarVisibility": "hidden" },
+        "kit": { "statusBarVisibility": "hidden" },
+        "folder": { "statusBarVisibility": "hidden" }
+    }
+
+}

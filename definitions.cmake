@@ -1,0 +1,1 @@
+set(MALLOW_APP_NAME Mallow CACHE STRING "Output executable name")
