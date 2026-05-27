@@ -1,7 +1,8 @@
 #include <core/io.h>
 #include <core/terminal.h>
-int mallowMain(){
-    core::io::write(core::terminal::stdoutHandle(), "hello world");
+#include <core/macro.h>
 
+int mallowMain() {
+    println("Hello, {}! {}", "world", 2);
     return 0;
 }

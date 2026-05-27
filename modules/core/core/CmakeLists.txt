@@ -14,6 +14,9 @@ target_sources(core
         public/core/c_string.h
         public/core/io.h
         private/io.cpp
+        public/core/macro.h
+        private/macro.cpp
+        public/core/traits.h
 )
 
 target_include_directories(core

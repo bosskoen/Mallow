@@ -10,6 +10,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/definitions.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/definitions.cmake)
 
+# Remove CMake's default exception handling flags
+string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+
+if(MSVC)
+    add_compile_options(/GR- /EHs-c-)
+else()
+    add_compile_options(-fno-rtti -fno-exceptions)
+endif()
 
 add_subdirectory(modules/core/core)
 
