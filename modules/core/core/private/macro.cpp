@@ -4,6 +4,7 @@
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
 #include <sys/mman.h>
+#include <unistd.h>
 #else
 #error "Unsupported platform"
 #endif
@@ -27,10 +28,10 @@
 static constexpr usize PAGE_SIZE = 4096;
 static constexpr usize ALLOC_GRANULARITY = 65536;
 
-#elif defined(MLW_APPLE) && (defined(MLW_ARM64) || defined(MLW_ARM32))
+#elif defined(MLW_MAC) && (defined(MLW_ARM64) || defined(MLW_ARM32))
 static constexpr usize PAGE_SIZE = 16384; // TODO verify, use runtime lookup
 
-#elif defined(MLW_APPLE) && (defined(MLW_X64) || defined(MLW_X86))
+#elif defined(MLW_MAC) && (defined(MLW_X64) || defined(MLW_X86))
 static constexpr usize PAGE_SIZE = 4096;
 
 #elif defined(MLW_LINUX) && (defined(MLW_ARM64) || defined(MLW_ARM32))
@@ -44,6 +45,16 @@ static constexpr usize PAGE_SIZE = 4096;
 #endif
 namespace core::detail
 {
+    [[noreturn]]
+    void terminate(int exit_code)
+    {
+        #if defined(MLW_WINDOWS)
+        ExitProcess(exit_code);
+        #elif defined(MLW_LINUX) || defined(MLW_MAC)
+        _exit(exit_code)
+        #endif
+    }
+
     FormatBufferType &getFormatBuffer()
     {
         thread_local FormatBufferType buf = []()

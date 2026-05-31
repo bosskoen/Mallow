@@ -34,13 +34,13 @@ namespace core
 
     struct FormatBufferType
     {
-        private: 
+    private:
         void realocate();
-        public:
+
+    public:
         char *ptr;
         index_t len;
         index_t capacity;
-
 
         inline void append(const CStr &str)
         {
@@ -68,6 +68,8 @@ namespace core
 
     namespace detail
     {
+        [[noreturn]] void terminate(int exit_code);
+
         FormatBufferType &getFormatBuffer();
 
         template <FormatBuffer Buffer>
@@ -173,8 +175,10 @@ namespace core
 
 #if defined(MLW_X64) || defined(MLW_ARM64)
             const index_t num_nibbles = 16;
-#else
+#elif defined(MLW_X86) || defined(MLW_ARM32)
             const index_t num_nibbles = 8;
+#else
+#error "Unknow ararchitecture"
 #endif
             char tmp[num_nibbles];
             index_t len = num_nibbles;
@@ -316,7 +320,7 @@ namespace core
     {                                                                                      \
         constexpr index_t _argc = [](auto... args) consteval                               \
         {                                                                                  \
-            return static_cast<core::index_t>(sizeof...(args));                            \
+            return static_cast<index_t>(sizeof...(args));                                  \
         }(__VA_ARGS__);                                                                    \
         if constexpr (_argc == 0)                                                          \
         {                                                                                  \
@@ -334,6 +338,62 @@ namespace core
             core::detail::format(buf, core::CStr(format_str), ##__VA_ARGS__);              \
             core::io::write(core::terminal::stdoutHandle(), core::CStr(buf.ptr, buf.len)); \
         }                                                                                  \
+    } while (0)
+
+#define eprintln(format_str, ...)                                                      \
+    do                                                                                 \
+    {                                                                                  \
+        constexpr bool _check = [](auto... args) consteval                             \
+        {                                                                              \
+            return core::detail::checkFormattable<decltype(args)...>();                \
+        }(__VA_ARGS__);                                                                \
+        static_assert(_check,                                                          \
+                      "println has an unformattable argument");                        \
+        core::FormatBufferType &buf = core::detail::getFormatBuffer();                 \
+        buf.len = 0;                                                                   \
+        core::detail::format(buf, core::CStr(format_str), ##__VA_ARGS__);              \
+        buf.append('\n');                                                              \
+        core::io::write(core::terminal::stderrHandle(), core::CStr(buf.ptr, buf.len)); \
+    } while (0)
+
+#define eprint(format_str, ...)                                                            \
+    do                                                                                     \
+    {                                                                                      \
+        constexpr index_t _argc = [](auto... args) consteval                               \
+        {                                                                                  \
+            return static_cast<index_t>(sizeof...(args));                                  \
+        }(__VA_ARGS__);                                                                    \
+        if constexpr (_argc == 0)                                                          \
+        {                                                                                  \
+            core::io::write(core::terminal::stderrHandle(), core::CStr(format_str));       \
+        }                                                                                  \
+        else                                                                               \
+        {                                                                                  \
+            constexpr bool _check = [](auto... args) consteval                             \
+            {                                                                              \
+                return core::detail::checkFormattable<decltype(args)...>();                \
+            }(__VA_ARGS__);                                                                \
+            static_assert(_check, "print has an unformattable argument");                  \
+            core::FormatBufferType &buf = core::detail::getFormatBuffer();                 \
+            buf.len = 0;                                                                   \
+            core::detail::format(buf, core::CStr(format_str), ##__VA_ARGS__);              \
+            core::io::write(core::terminal::stderrHandle(), core::CStr(buf.ptr, buf.len)); \
+        }                                                                                  \
+    } while (0)
+
+#define panic(format_str, ...)                           \
+    do                                                   \
+    {                                                    \
+        eprintln("panic at {}::{}", __FILE__, __LINE__); \
+        eprint(format_str, ##__VA_ARGS__);               \
+        core::detail::terminate(1);                      \
+    } while (0)
+
+#define TODO()                                    \
+    do                                            \
+    {                                             \
+        print("TODO {}::{}", __FILE__, __LINE__); \
+        core::detail::terminate(1);               \
     } while (0)
 
 // TODO resizeble alocations
