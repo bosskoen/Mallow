@@ -13,10 +13,66 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/definitions.cmake)
 # Remove CMake's default exception handling flags
 string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
+option(MLW_NO_STDLIB_CXX   "Remove C++ stdlib (keep CRT + libc)"       OFF)
+option(MLW_NO_DEFAULT_LIBS "Remove all default libs (keep CRT startup)" OFF) # libc is linked
+option(MLW_NO_STDLIB       "Remove everything including CRT"            OFF)
+option(MLW_NO_BUILTINS     "Disable compiler builtin functions"         OFF) # libs is linked but compiler won't emit calls to builtins like memcpy/memset
+
+# always strip rtti and exceptions
 if(MSVC)
     add_compile_options(/GR- /EHs-c-)
 else()
     add_compile_options(-fno-rtti -fno-exceptions)
+endif()
+
+# disable builtins so libc is linked but compiler wont emit memcpy/memset calls silently
+if(MLW_NO_BUILTINS)
+    if(NOT MSVC)
+        add_compile_options(-fno-builtin)
+    endif()
+    message(STATUS "stdlib: builtins disabled")
+endif()
+
+if(MLW_NO_STDLIB)
+    if(MSVC)
+        add_link_options(/NODEFAULTLIB)
+    else()
+        add_compile_options(-nostdlib)
+    endif()
+    message(STATUS "stdlib: none (you are on your own)")
+
+elseif(MLW_NO_DEFAULT_LIBS)
+    if(MSVC)
+        add_link_options(
+            /NODEFAULTLIB:msvcprt.lib
+            /NODEFAULTLIB:libcpmt.lib
+            /NODEFAULTLIB:msvcrt.lib
+        )
+    else()
+        add_compile_options(-nodefaultlibs)
+        add_link_libraries(c)
+    endif()
+    message(STATUS "stdlib: no default libs, libc kept")
+
+elseif(MLW_NO_STDLIB_CXX)
+    if(MSVC)
+        add_link_options(
+            /NODEFAULTLIB:msvcprt.lib
+            /NODEFAULTLIB:libcpmt.lib
+        )
+    else()
+        add_compile_options(-nostdlib++)
+    endif()
+    message(STATUS "stdlib: no C++ stdlib, CRT intact")
+
+else()
+    # default: CRT + libc linked, builtins controlled by MLW_NO_BUILTINS
+    message(STATUS "stdlib: full (default, use MLW_NO_BUILTINS to disable builtins)")
+endif()
+
+# static CRT on MSVC so no runtime dll needed
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 add_subdirectory(modules/core/core)

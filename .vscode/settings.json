@@ -9,6 +9,7 @@
         "ctest": { "statusBarVisibility": "hidden" },
         "kit": { "statusBarVisibility": "hidden" },
         "folder": { "statusBarVisibility": "hidden" }
-    }
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 
 }

@@ -42,6 +42,7 @@ template<> struct is_integer<i64> { static constexpr bool value = true; };
     template<> struct is_integer<i128> { static constexpr bool value = true; };
 #endif
 
+
 template<typename T>
 constexpr bool is_integer_v = is_integer<T>::value;
 
@@ -52,6 +53,13 @@ template<> struct is_float<f64> { static constexpr bool value = true; };
 
 template<typename T>
 constexpr bool is_float_v = is_float<T>::value;
+
+template<typename T> struct is_pointer              { static constexpr bool value = false; };
+template<typename T> struct is_pointer<T*>          { static constexpr bool value = true; using Valuetype = T; };
+template<typename T> struct is_pointer<const T*>    { static constexpr bool value = true; using Valuetype = const T; };
+
+template<typename T>
+constexpr bool is_pointer_v = is_pointer<T>::value;
 
 template<typename T> struct is_signed { static constexpr bool value = false; };
 template<> struct is_signed<i8>  { static constexpr bool value = true; };
@@ -68,10 +76,16 @@ constexpr bool is_signed_v = is_signed<T>::value;
 
 
 template<typename T>        struct is_array          { static constexpr bool value = false; };
-template<typename T, usize N> struct is_array<T[N]>  { static constexpr bool value = true; using Valuetype = T; };
+template<typename T, usize N> struct is_array<T[N]>  { static constexpr bool value = true; using Valuetype = T; static constexpr usize size = N; };
 
 template<typename T>
 constexpr bool is_array_v = is_array<T>::value;
 
+template <typename T> struct remove_ref      { using type = T; };  // base case, nothing to remove
+template <typename T> struct remove_ref<T&>  { using type = T; };  // T& -> T
+template <typename T> struct remove_ref<T&&> { using type = T; };
+
+template <typename T>
+using remove_ref_t = typename remove_ref<T>::type;
 
 } // namespace core
