@@ -17,6 +17,8 @@ target_sources(core
         public/core/macro.h
         private/macro.cpp
         public/core/traits.h
+        public/core/memory.h
+        private/memory.cpp
 )
 
 target_include_directories(core

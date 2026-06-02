@@ -4,6 +4,8 @@
 #include "typedef.h"
 #include "traits.h"
 #include "terminal.h"
+#include "compilers.h"
+#include "core/memory.h"
 
 namespace core
 {
@@ -49,10 +51,7 @@ namespace core
                 realocate();
             }
             // copy str to buffer
-            for (index_t i = 0; i < str.len; ++i)
-            {
-                ptr[len + i] = str.ptr[i];
-            }
+            mlwMemcpy(ptr + len, str.ptr, str.len);
             len += str.len;
         }
         inline void append(const u8 value)
