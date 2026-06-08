@@ -54,9 +54,11 @@ template<> struct is_float<f64> { static constexpr bool value = true; };
 template<typename T>
 constexpr bool is_float_v = is_float<T>::value;
 
-template<typename T> struct is_pointer              { static constexpr bool value = false; };
-template<typename T> struct is_pointer<T*>          { static constexpr bool value = true; using Valuetype = T; };
-template<typename T> struct is_pointer<const T*>    { static constexpr bool value = true; using Valuetype = const T; };
+template<typename T> struct is_pointer                 { static constexpr bool value = false; };
+template<typename T> struct is_pointer<T*>             { static constexpr bool value = true; using Valuetype = T; };
+template<typename T> struct is_pointer<T* const>       { static constexpr bool value = true; using Valuetype = T; };
+template<typename T> struct is_pointer<const T*>       { static constexpr bool value = true; using Valuetype = const T; };
+template<typename T> struct is_pointer<const T* const> { static constexpr bool value = true; using Valuetype = const T; };
 
 template<typename T>
 constexpr bool is_pointer_v = is_pointer<T>::value;

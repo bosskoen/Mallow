@@ -1,8 +1,8 @@
 #pragma once
 #include "typedef.h"
 
-#include <cstring>
 
+extern "C" void *memcpy(void* __restrict dst, const void* __restrict src, usize n);
 
 // Sources:
 //   Intel x86/x86_64 page size : Intel SDM vol.3a ch.5 table 5.1
