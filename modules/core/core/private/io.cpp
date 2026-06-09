@@ -10,7 +10,7 @@
 
 namespace core::io
 {
-    void write(Handle handle, CStr str){
+    void writeHandle(Handle handle, CStr str){
 #if defined(MLW_WINDOWS)
         DWORD written;
         WriteFile(handle.fd, str.ptr, str.len, &written, nullptr);

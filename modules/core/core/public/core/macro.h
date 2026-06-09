@@ -4,91 +4,55 @@
 #include "io/terminal.h"
 #include "io/io.h"
 
-
-#define println(format_str, ...)                                                                             \
+#define write(buffer, format_str, ...)                                                                       \
     do                                                                                                       \
     {                                                                                                        \
         static_assert(                                                                                       \
-            [](auto &&...args) { return core::detail::checkFormattable<decltype(args)...>(); }(__VA_ARGS__), \
-            "println has an unformattable argument");                                                        \
-        core::FormatBufferType &buf = core::detail::getFormatBuffer();                                       \
-        buf.len = 0;                                                                                         \
-        core::detail::format(buf, core::CStr(format_str), ##__VA_ARGS__);                                    \
-        buf.append('\n');                                                                                    \
-        core::io::write(core::terminal::stdoutHandle(), core::CStr(buf.ptr, buf.len));                       \
+            [](auto &&...args) { return core::detail::checkFormattable<decltype(args)...>(); }(##__VA_ARGS__), \
+            "write has an unformattable argument");                                                          \
+        static_assert(core::FormatBuffer<decltype(buffer)>, "write has an incompatible buffer");             \
+        core::detail::format(buffer, core::CStr(format_str), ##__VA_ARGS__);                                 \
     } while (0)
 
-#define print(format_str, ...)                                                                                   \
-    do                                                                                                           \
-    {                                                                                                            \
-        if constexpr ([](auto &&...args) { return sizeof...(args) == 0; }(__VA_ARGS__))                          \
-        {                                                                                                        \
-            core::io::write(core::terminal::stdoutHandle(), core::CStr(format_str));                             \
-        }                                                                                                        \
-        else                                                                                                     \
-        {                                                                                                        \
-            static_assert(                                                                                       \
-                [](auto &&...args) { return core::detail::checkFormattable<decltype(args)...>(); }(__VA_ARGS__), \
-                "print has an unformattable argument");                                                          \
-            core::FormatBufferType &buf = core::detail::getFormatBuffer();                                       \
-            buf.len = 0;                                                                                         \
-            core::detail::format(buf, core::CStr(format_str), ##__VA_ARGS__);                                    \
-            core::io::write(core::terminal::stdoutHandle(), core::CStr(buf.ptr, buf.len));                       \
-        }                                                                                                        \
+#define _MLW_WRITE_IMPL(handle, newline, format_str, ...)                                                                   \
+    do                                                                                                                      \
+    {                                                                                                                       \
+        if constexpr ([](auto &&...args) { return sizeof...(args); }(##__VA_ARGS__) == 0 && !newline) \
+        {                                                                                                                   \
+                core::io::writeHandle(handle, core::CStr(format_str));                                                      \
+        }                                                                                                                   \
+        else                                                                                                                \
+        {                                                                                                                   \
+            core::FormatBufferType &buf = core::detail::getFormatBuffer();                                                  \
+            buf.len = 0;                                                                                                    \
+            write(buf, format_str, ##__VA_ARGS__);                                                                          \
+            if constexpr (newline)                                                                                          \
+                buf.append('\n');                                                                                           \
+            core::io::writeHandle(handle, core::CStr(buf.ptr, buf.len));                                                    \
+        }                                                                                                                   \
     } while (0)
 
-#define eprintln(format_str, ...)                                                                            \
-    do                                                                                                       \
-    {                                                                                                        \
-        static_assert(                                                                                       \
-            [](auto &&...args) { return core::detail::checkFormattable<decltype(args)...>(); }(__VA_ARGS__), \
-            "eprintln has an unformattable argument");                                                       \
-        core::FormatBufferType &buf = core::detail::ge                                                       \
-            core::FormatBufferType &buf = core::detail::getFormatBuffer();                                   \
-        buf.len = 0;                                                                                         \
-        core::detail::format(buf, core::CStr(format_str), ##__VA_ARGS__);                                    \
-        buf.append('\n');                                                                                    \
-        core::io::write(core::terminal::stderrHandle(), core::CStr(buf.ptr, buf.len));                       \
-    } while (0)
-
-#define eprint(format_str, ...)                                                                                  \
-    do                                                                                                           \
-    {                                                                                                            \
-        if constexpr ([](auto &&...args) { return sizeof...(args) == 0; }(__VA_ARGS__))                          \
-        {                                                                                                        \
-            core::io::write(core::terminal::stderrHandle(), core::CStr(format_str));                             \
-        }                                                                                                        \
-        else                                                                                                     \
-        {                                                                                                        \
-            static_assert(                                                                                       \
-                [](auto &&...args) { return core::detail::checkFormattable<decltype(args)...>(); }(__VA_ARGS__), \
-                "eprint has an unformattable argument");                                                         \
-            core::FormatBufferType &buf = core::detail::ge                                                       \
-                core::FormatBufferType &buf = core::detail::getFormatBuffer();                                   \
-            buf.len = 0;                                                                                         \
-            core::detail::format(buf, core::CStr(format_str), ##__VA_ARGS__);                                    \
-            core::io::write(core::terminal::stderrHandle(), core::CStr(buf.ptr, buf.len));                       \
-        }                                                                                                        \
-    } while (0)
+#define print(format_str, ...) _MLW_WRITE_IMPL(core::terminal::stdoutHandle(), false, format_str, ##__VA_ARGS__)
+#define println(format_str, ...) _MLW_WRITE_IMPL(core::terminal::stdoutHandle(), true, format_str, ##__VA_ARGS__)
+#define eprint(format_str, ...) _MLW_WRITE_IMPL(core::terminal::stderrHandle(), false, format_str, ##__VA_ARGS__)
+#define eprintln(format_str, ...) _MLW_WRITE_IMPL(core::terminal::stderrHandle(), true, format_str, ##__VA_ARGS__)
 
 #define panic(format_str, ...)                           \
     do                                                   \
     {                                                    \
-        eprintln("panic at {}::{}", __FILE__, __LINE__); \
+        eprintln("panic at {}:{}", __FILE__, __LINE__); \
         eprint(format_str, ##__VA_ARGS__);               \
-        core::terminate(1);                      \
+        core::terminate(1);                              \
     } while (0)
 
-#define TODO()                                    \
-    do                                            \
-    {                                             \
-        print("TODO {}::{}", __FILE__, __LINE__); \
-        core::exit(1);                        \
+#define TODO()                                     \
+    do                                             \
+    {                                              \
+        eprint("TODO {}:{}", __FILE__, __LINE__); \
+        core::exit(1);                             \
     } while (0)
-
-// TODO 
+// TODO
 //      document how to use
-//      pritify
 //      make more test
 //      make collors
 //      make error {} != args...

@@ -4,7 +4,7 @@
 
 namespace core::io
 {
-    void write(Handle handle, CStr str);
+    void writeHandle(Handle handle, CStr str);
 
     
 
