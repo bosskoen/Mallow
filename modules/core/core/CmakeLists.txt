@@ -6,19 +6,23 @@ add_library(core::core ALIAS core)
 
 target_sources(core
     PRIVATE
-        public/core/terminal.h
+        public/core/io/terminal.h
         private/terminal.cpp
-        public/core/handle.h
+        public/core/io/handle.h
         public/core/typedef.h
         private/c_string.cpp
         public/core/c_string.h
-        public/core/io.h
+        public/core/io/io.h
         private/io.cpp
         public/core/macro.h
-        private/macro.cpp
+        private/format.cpp
         public/core/traits.h
-        public/core/memory.h
+        public/core/memory/memory.h
         private/memory.cpp
+        public/core/io/format.h
+        public/core/libc/mem.h
+        public/core/libc/process.h
+        public/core/libc/str.h
 )
 
 target_include_directories(core

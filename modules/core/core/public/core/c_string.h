@@ -1,8 +1,7 @@
 #pragma once
 
 #include "typedef.h"
-
-extern "C" usize strlen(const char *str);
+#include "libc/str.h"
 
 namespace core
 {
@@ -22,14 +21,13 @@ namespace core
         index_t len;
 
         template <index_t N>
-        inline constexpr CStr(const char (&str)[N]) : ptr(str), len(N - 1) {}
+        MLW_FORCE_INLINE constexpr CStr(const char (&str)[N]) : ptr(str), len(N - 1) {}
 
-        inline constexpr CStr(const char *ptr, index_t len) : ptr(ptr), len(len) {}
+        MLW_FORCE_INLINE constexpr CStr(const char *ptr, index_t len) : ptr(ptr), len(len) {}
 
-        static constexpr CStr fromPtr(const char *ptr)
+        MLW_FORCE_INLINE static constexpr CStr fromPtr(const char *ptr)
         {
-
-            return CStr(ptr, strlen(ptr));
+            return CStr(ptr, mlwStrlen(ptr));
         }
     };
 } // namespace core::

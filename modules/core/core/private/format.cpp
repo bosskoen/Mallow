@@ -1,6 +1,5 @@
-#include "macro.h"
-
-#include "memory.h"
+#include "io/format.h"
+#include "memory/memory.h"
 
 #if defined(MLW_WINDOWS)
 #include <windows.h>
@@ -12,16 +11,6 @@
 
 namespace core::detail
 {
-    [[noreturn]]
-    void terminate(int exit_code)
-    {
-#if defined(MLW_WINDOWS)
-        ExitProcess(exit_code);
-#elif defined(MLW_LINUX) || defined(MLW_MAC)
-        _exit(exit_code);
-#endif
-    }
-
     FormatBufferType &getFormatBuffer()
     {
         thread_local FormatBufferType buf = []()

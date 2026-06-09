@@ -1,4 +1,4 @@
-#include "core/terminal.h"
+#include "core/io/terminal.h"
 extern int mallowMain();
 
 int main(int c, const char *v[]){

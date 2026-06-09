@@ -1,5 +1,3 @@
-#include <core/io.h>
-#include <core/terminal.h>
 #include <core/macro.h>
 
 int mallowMain() {
