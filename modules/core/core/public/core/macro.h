@@ -7,9 +7,8 @@
 #define write(buffer, format_str, ...)                                                                       \
     do                                                                                                       \
     {                                                                                                        \
-        static_assert(                                                                                       \
-            [](auto &&...args) { return core::detail::checkFormattable<decltype(args)...>(); }(##__VA_ARGS__), \
-            "write has an unformattable argument");                                                          \
+        static_assert(core::detail::checkFormattable<decltype(##__VA_ARGS__)>(),                                \
+            "write has an unformattable argument");                                                         \
         static_assert(core::FormatBuffer<decltype(buffer)>, "write has an incompatible buffer");             \
         core::detail::format(buffer, core::CStr(format_str), ##__VA_ARGS__);                                 \
     } while (0)

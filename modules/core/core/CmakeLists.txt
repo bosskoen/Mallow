@@ -23,6 +23,7 @@ target_sources(core
         public/core/libc/mem.h
         public/core/libc/process.h
         public/core/libc/str.h
+        public/core/libc/math.h
 )
 
 target_include_directories(core

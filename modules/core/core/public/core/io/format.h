@@ -2,6 +2,7 @@
 #include "c_string.h"
 #include "traits.h"
 #include "libc/mem.h"
+#include "libc/math.h"
 
 namespace core
 {
@@ -63,7 +64,6 @@ namespace core
 
     namespace detail
     {
-       
 
         FormatBufferType &getFormatBuffer();
 
@@ -111,48 +111,92 @@ namespace core
         }
 
         template <FormatBuffer Buffer>
-        inline void formatFloat(Buffer &buffer, f64 value, index_t precision = 6)
+        inline void formatFloat(Buffer &buffer, f64 value, index_t precision = 6, bool fixedPrecision = false)
         {
-
-            char tmp[32];
-            index_t len = 0;
-
-            if (value < 0)
+            precision = mlwClamp(precision, 1, 16); // make mlw call
+            if (mlwIsNaN(value))                    // NaN
             {
-                tmp[len++] = '-';
-                value = -value;
+                buffer.append("NaN");
+                return;
+            }
+            if (mlwIsInf(value))
+            {
+                buffer.append(value < 0.0 ? core::CStr("-Inf") : core::CStr("Inf"));
+                return;
             }
 
-            u64 integer_part = static_cast<u64>(value);
+            if (value == 0.0)
+            {
+                if (fixedPrecision)
+                {
+                    char tmp[20] = {};
+                    index_t len = 0;
+                    tmp[len++] = '0';
+                    tmp[len++] = '.';
+                    for (index_t i = 0; i < precision; ++i)
+                    {
+                        tmp[len++] = '0';
+                    }
+                    buffer.append(CStr(tmp, len));
+                }
+                else
+                {
+                    buffer.append("0.0");
+                }
+                return;
+            }
+
+            // if bigger than somthing
+            if (value < 0.0)
+            {
+                buffer.append('-');
+                value = mlwCopySign(value, 1.0);
+            }
+
+            if (value > 1e15 || value < 1e-4)
+            {
+                // use scientific notation
+                i64 exponent = static_cast<i64>(mlwFloor(mlwLog10(value)));
+                value /= mlwPow10(static_cast<f64>(exponent));
+
+                if (value >= 10.0)
+                {
+                    value /= 10.0;
+                    ++exponent;
+                }
+                else if (value < 1.0)
+                {
+                    value *= 10.0;
+                    --exponent;
+                }
+                formatFloat(buffer, value, precision, fixedPrecision);
+                buffer.append('e');
+                formatInt(buffer, exponent);
+                return;
+            }
+
+            i64 integer_part = static_cast<i64>(value);
+            formatUInt(buffer, static_cast<u64>(integer_part));
             f64 frac = value - static_cast<f64>(integer_part);
 
-            if (integer_part == 0)
-            {
-                tmp[len++] = '0';
-            }
-            else
-            {
-                index_t start = len;
-                while (integer_part > 0)
-                {
-                    tmp[len++] = '0' + (integer_part % 10);
-                    integer_part /= 10;
-                }
-                // reverse just the integer part
-                for (index_t i = start; i < start + (len - start) / 2; ++i)
-                {
-                    char t = tmp[i];
-                    tmp[i] = tmp[len - 1 - (i - start)];
-                    tmp[len - 1 - (i - start)] = t;
-                }
-            }
+            char tmp[20];
+            index_t len = 0;
+
             tmp[len++] = '.';
 
-            for (index_t i = 0; i < precision; i++)
+            f64 remaining = frac;
+            for (index_t i = 0; i < precision; ++i)
             {
-                frac *= 10;
-                tmp[len++] = '0' + (u8)frac;
-                frac -= (u8)frac;
+                remaining *= 10;
+                tmp[len++] = '0' + static_cast<u8>(remaining);
+                remaining -= static_cast<u8>(remaining);
+            }
+
+            if (!fixedPrecision)
+            {
+                // trim trailing zeros
+                while (len > 2 && tmp[len - 1] == '0')
+                    --len;
             }
 
             buffer.append(CStr(tmp, len));
