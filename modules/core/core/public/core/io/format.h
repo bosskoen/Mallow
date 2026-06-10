@@ -153,7 +153,7 @@ namespace core
                 value = mlwCopySign(value, 1.0);
             }
 
-            if (value > 1e15 || value < 1e-4)
+            if (value > 1e14 || value < 1e-4)
             {
                 // use scientific notation
                 i64 exponent = static_cast<i64>(mlwFloor(mlwLog10(value)));

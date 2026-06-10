@@ -59,9 +59,12 @@ int mallowMain() {
     const i32* const p = nullptr;
     println("Hello, {}! {} {} {} {} {}", "world", 2, 3.14, &x, x, p);
     //panic("", "s");
-    
-    core::CStr thing = core::CStr::CStr("world!"); 
-    print("Hello, {}! {} {} {} {} {}", thing, 2, 3.14, &x, x, p);
+
+    void* ptr = core::mlwAlignedAlloc(100, 64);
+    static_cast<char*>(ptr)[0] = 1;
+
+    core::CStr thing = core::CStr::CStr(static_cast<char*>(ptr), 100); 
+    print("Hello, {}! {} {} {} {} {}", thing, 2, 3.14, &x, x, ptr);
     float_test();
     return 0;
 }

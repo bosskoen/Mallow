@@ -18,7 +18,7 @@ target_sources(core
         private/format.cpp
         public/core/traits.h
         public/core/memory/memory.h
-        private/memory.cpp
+        private/mem.cpp
         public/core/io/format.h
         public/core/libc/mem.h
         public/core/libc/process.h

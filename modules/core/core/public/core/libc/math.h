@@ -127,4 +127,11 @@ namespace core
     {
         return floorf(x);
     }
+    
+    template <typename T>
+        requires is_float_v<T> || is_integer_v<T>
+    MLW_FORCE_INLINE T mlwMin(T a, T b)
+    {
+        return a < b ? a : b;
+    }
 }

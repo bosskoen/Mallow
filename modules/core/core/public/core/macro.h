@@ -55,7 +55,6 @@
 //      make more test
 //      make collors
 //      make error {} != args...
-//      float auto presision
 //      make format options
 //      make vscode snippets for formatt fucntion
 //      make format macro as soon as alocator avalebel
