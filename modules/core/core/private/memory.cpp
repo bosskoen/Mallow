@@ -56,7 +56,7 @@ void *core::StackAllocator::alloc(usize size, usize alignment)
          return nullptr;
         }
 
-    void* ptr = reinterpret_cast<u8*>(base) + new_offset;
+    void* ptr = reinterpret_cast<uint8*>(base) + new_offset;
     offset = new_offset + size;
     return ptr;
 }

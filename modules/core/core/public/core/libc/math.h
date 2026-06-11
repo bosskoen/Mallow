@@ -42,7 +42,7 @@ namespace core
     MLW_FORCE_INLINE bool mlwIsInf(f64 value)
     {
 #if defined(MLW_MSVC)
-        u64 bits;
+        uint64 bits;
         mlwMemcpy(&bits, &value, sizeof(bits));
         return (bits & 0x7FFFFFFFFFFFFFFF) == 0x7FF0000000000000;
 #else
@@ -52,7 +52,7 @@ namespace core
     MLW_FORCE_INLINE bool mlwIsInf(f32 value)
     {
 #if defined(MLW_MSVC)
-        u32 bits;
+        uint32 bits;
         mlwMemcpy(&bits, &value, sizeof(bits));
         return (bits & 0x7FFFFFFF) == 0x7F800000;
 #else

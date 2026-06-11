@@ -18,7 +18,7 @@
     {                                                                                                           \
         if constexpr ([](auto &&...args) consteval { return sizeof...(args); }(##__VA_ARGS__) == 0 && !newline) \
         {                                                                                                       \
-            core::io::writeHandle(handle, core::CStr(format_str));                                              \
+            io::writeHandle(handle, core::CStr(format_str));                                              \
         }                                                                                                       \
         else                                                                                                    \
         {                                                                                                       \
@@ -27,7 +27,7 @@
             write(buf, format_str, ##__VA_ARGS__);                                                              \
             if constexpr (newline)                                                                              \
                 buf.append('\n');                                                                               \
-            core::io::writeHandle(handle, core::CStr(buf.ptr, buf.len));                                        \
+            io::writeHandle(handle, core::CStr(buf.ptr, buf.len));                                        \
         }                                                                                                       \
     } while (0)
 

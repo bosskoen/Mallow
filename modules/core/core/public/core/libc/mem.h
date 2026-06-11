@@ -58,12 +58,12 @@ namespace core
         return ::memcpy(dst, src, n);
     }
 
-    MLW_FORCE_INLINE void *mlwMemset(void *dst, u8 value, usize n)
+    MLW_FORCE_INLINE void *mlwMemset(void *dst, uint8 value, usize n)
     {
         return ::memset(dst, value, n);
     }
 
-    MLW_FORCE_INLINE void *mlwAlignedAlloc(usize size, u16 alignment)
+    MLW_FORCE_INLINE void *mlwAlignedAlloc(usize size, usize alignment)
     {
 #if defined(MLW_WINDOWS)
         return ::_aligned_malloc(size, alignment);

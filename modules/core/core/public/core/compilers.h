@@ -13,7 +13,7 @@
 #endif
 
 #if defined(MLW_MSVC)
-    static __forceinline usize mlw_ctz64(u64 x)
+    static __forceinline usize mlw_ctz64(uint64 x)
     {
         unsigned long idx;
         _BitScanForward64(&idx, x);
@@ -27,7 +27,7 @@
 
 #if defined(MLW_MSVC)
 
-    static __forceinline usize mlw_clz64(u64 x)
+    static __forceinline usize mlw_clz64(uint64 x)
     {
         unsigned long idx;
         _BitScanReverse64(&idx, x);

@@ -22,14 +22,14 @@ constexpr bool is_bool_v = is_bool<T>::value;
 
 // is_integer
 template<typename T> struct is_integer { static constexpr bool value = false; };
-template<> struct is_integer<u8>  { static constexpr bool value = true; };
-template<> struct is_integer<u16> { static constexpr bool value = true; };
-template<> struct is_integer<u32> { static constexpr bool value = true; };
-template<> struct is_integer<u64> { static constexpr bool value = true; };
-template<> struct is_integer<i8>  { static constexpr bool value = true; };
-template<> struct is_integer<i16> { static constexpr bool value = true; };
-template<> struct is_integer<i32> { static constexpr bool value = true; };
-template<> struct is_integer<i64> { static constexpr bool value = true; };
+template<> struct is_integer<uint8>  { static constexpr bool value = true; };
+template<> struct is_integer<uint16> { static constexpr bool value = true; };
+template<> struct is_integer<uint32> { static constexpr bool value = true; };
+template<> struct is_integer<uint64> { static constexpr bool value = true; };
+template<> struct is_integer<int8>  { static constexpr bool value = true; };
+template<> struct is_integer<int16> { static constexpr bool value = true; };
+template<> struct is_integer<int32> { static constexpr bool value = true; };
+template<> struct is_integer<int64> { static constexpr bool value = true; };
 
 // they are tecnicly defined as i32 but they could change in the future so we need to check for them as well
 // template<> struct is_integer<isize> { static constexpr bool value = true; };
@@ -38,8 +38,8 @@ template<> struct is_integer<i64> { static constexpr bool value = true; };
 
 
 #if !defined(MLW_NO_I128)
-    template<> struct is_integer<u128> { static constexpr bool value = true; };
-    template<> struct is_integer<i128> { static constexpr bool value = true; };
+    template<> struct is_integer<uint128> { static constexpr bool value = true; };
+    template<> struct is_integer<int128> { static constexpr bool value = true; };
 #endif
 
 
@@ -64,12 +64,12 @@ template<typename T>
 constexpr bool is_pointer_v = is_pointer<T>::value;
 
 template<typename T> struct is_signed { static constexpr bool value = false; };
-template<> struct is_signed<i8>  { static constexpr bool value = true; };
-template<> struct is_signed<i16> { static constexpr bool value = true; };
-template<> struct is_signed<i32> { static constexpr bool value = true; };
-template<> struct is_signed<i64> { static constexpr bool value = true; };
+template<> struct is_signed<int8>  { static constexpr bool value = true; };
+template<> struct is_signed<int16> { static constexpr bool value = true; };
+template<> struct is_signed<int32> { static constexpr bool value = true; };
+template<> struct is_signed<int64> { static constexpr bool value = true; };
 #if !defined(MLW_NO_I128)
-template<> struct is_signed<i128> { static constexpr bool value = true; };
+template<> struct is_signed<int128> { static constexpr bool value = true; };
 #endif
 // template<> struct is_integer<isize> { static constexpr bool value = true; };
 // template<> struct is_integer<index_t> { static constexpr bool value = true; };

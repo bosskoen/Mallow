@@ -51,7 +51,7 @@ namespace core
             mlwMemcpy(ptr + len, str.ptr, str.len);
             len += str.len;
         }
-        inline void append(const u8 value)
+        inline void append(const uint8 value)
         {
             while (len + 1 > capacity)
             {
@@ -68,7 +68,7 @@ namespace core
         FormatBufferType &getFormatBuffer();
 
         template <FormatBuffer Buffer>
-        inline void formatUInt(Buffer &buffer, u64 value)
+        inline void formatUInt(Buffer &buffer, uint64 value)
         {
             if (value == 0)
             {
@@ -96,7 +96,7 @@ namespace core
         }
 
         template <FormatBuffer Buffer>
-        inline void formatInt(Buffer &buffer, i64 value)
+        inline void formatInt(Buffer &buffer, int64 value)
         {
             if (value == 0)
             {
@@ -107,7 +107,7 @@ namespace core
             bool negative = value < 0;
             if (negative)
                 buffer.append('-');
-            formatUInt(buffer, negative ? static_cast<u64>(-value) : static_cast<u64>(value));
+            formatUInt(buffer, negative ? static_cast<uint64>(-value) : static_cast<uint64>(value));
         }
 
         template <FormatBuffer Buffer>
@@ -156,7 +156,7 @@ namespace core
             if (value > 1e14 || value < 1e-4)
             {
                 // use scientific notation
-                i64 exponent = static_cast<i64>(mlwFloor(mlwLog10(value)));
+                int64 exponent = static_cast<int64>(mlwFloor(mlwLog10(value)));
                 value /= mlwPow10(static_cast<f64>(exponent));
 
                 if (value >= 10.0)
@@ -175,8 +175,8 @@ namespace core
                 return;
             }
 
-            i64 integer_part = static_cast<i64>(value);
-            formatUInt(buffer, static_cast<u64>(integer_part));
+            int64 integer_part = static_cast<int64>(value);
+            formatUInt(buffer, static_cast<uint64>(integer_part));
             f64 frac = value - static_cast<f64>(integer_part);
 
             char tmp[20];
@@ -188,8 +188,8 @@ namespace core
             for (index_t i = 0; i < precision; ++i)
             {
                 remaining *= 10;
-                tmp[len++] = '0' + static_cast<u8>(remaining);
-                remaining -= static_cast<u8>(remaining);
+                tmp[len++] = '0' + static_cast<uint8>(remaining);
+                remaining -= static_cast<uint8>(remaining);
             }
 
             if (!fixedPrecision)
@@ -223,7 +223,7 @@ namespace core
             index_t len = num_nibbles;
             while (value > 0)
             {
-                u8 nibble = value & 0xF;
+                uint8 nibble = value & 0xF;
                 tmp[--len] = (nibble < 10) ? ('0' + nibble) : ('A' + nibble - 10);
                 value >>= 4;
             }
@@ -276,11 +276,11 @@ namespace core
             {
                 if constexpr (is_signed_v<T>)
                 {
-                    formatInt(buffer, static_cast<i64>(value));
+                    formatInt(buffer, static_cast<int64>(value));
                 }
                 else
                 {
-                    formatUInt(buffer, static_cast<u64>(value));
+                    formatUInt(buffer, static_cast<uint64>(value));
                 }
             }
             else if constexpr (is_float_v<T>)

@@ -7,12 +7,12 @@ namespace {
 }
 
 namespace core{
-    MLW_NO_RETURN MLW_FORCE_INLINE void mlwExit(int status)
+    MLW_NO_RETURN MLW_FORCE_INLINE void mlwExit(int32 status)
     {
         ::exit(status);
     }
 
-    MLW_NO_RETURN MLW_FORCE_INLINE void mlwTerminate(int status)
+    MLW_NO_RETURN MLW_FORCE_INLINE void mlwTerminate(int32 status)
     {
         ::_Exit(status);
     }

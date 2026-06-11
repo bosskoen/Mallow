@@ -8,9 +8,9 @@
     #include <unistd.h>
 #endif
 
-namespace core::io
+namespace io
 {
-    void writeHandle(Handle handle, CStr str){
+    void writeHandle(Handle handle, core::CStr str){
 #if defined(MLW_WINDOWS)
         DWORD written;
         WriteFile(handle.fd, str.ptr, str.len, &written, nullptr);

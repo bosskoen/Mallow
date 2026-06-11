@@ -2,11 +2,11 @@
 #include "handle.h"
 #include "c_string.h"
 
-namespace core::io
+namespace io
 {
-    void writeHandle(Handle handle, CStr str);
+    void writeHandle(Handle handle, core::CStr str);
 
     
 
     
-} // namespace core::io
+} // namespace io

@@ -20,7 +20,7 @@ namespace core::terminal
 #endif
     }
 
-    core::io::Handle stderrHandle()
+    io::Handle stderrHandle()
 {
     #if defined(MLW_WINDOWS)
         return GetStdHandle(STD_ERROR_HANDLE);
@@ -29,7 +29,7 @@ namespace core::terminal
 #endif
 }
 
-core::io::Handle stdinHandle()
+io::Handle stdinHandle()
 {
 #if defined(MLW_WINDOWS)
         return GetStdHandle(STD_INPUT_HANDLE);

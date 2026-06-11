@@ -1,7 +1,7 @@
 #pragma once
 #include "../typedef.h"
 
-namespace core::io
+namespace io
 {
     struct Handle{
 #if defined(MLW_WINDOWS)

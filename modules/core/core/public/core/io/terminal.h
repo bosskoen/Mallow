@@ -4,9 +4,9 @@
 
 namespace core::terminal
 {
-    core::io::Handle stdoutHandle();
-    core::io::Handle stderrHandle();
-    core::io::Handle stdinHandle();
+    io::Handle stdoutHandle();
+    io::Handle stderrHandle();
+    io::Handle stdinHandle();
 
     extern struct Args{
         int count;

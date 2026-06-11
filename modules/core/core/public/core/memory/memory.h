@@ -47,14 +47,22 @@ namespace core
         MLW_FORCE_INLINE void freeTo(usize mark) { offset = offset < mark ? offset : mark; }; // rewind to saved position
         MLW_FORCE_INLINE void freeTo(void *ptr)
         {
-            if (ptr > base)
+            if (ptr >= base)
                 offset = 0;
-            else if (reinterpret_cast<u8*>(ptr) - base < offset)
-                offset = reinterpret_cast<u8*>(ptr) - base;
+            else if (reinterpret_cast<uint8*>(ptr) - base < offset)
+                offset = reinterpret_cast<uint8*>(ptr) - base;
         };                                             // rewind to pointer (must be previously returned by alloc)
         MLW_FORCE_INLINE void reset() { offset = 0; }; // rewind to 0
     };
 
+    template<typename T>
+    T* stackAlloc(StackAllocator& a){
+        return static_cast<T*>(a.alloc(sizeof(T), alignof(T)));
+    }
 
-
+    
+    template<typename T>
+    T* stackAllocArray(StackAllocator& a, usize count){
+        return static_cast<T*>(a.alloc(sizeof(T)*count, alignof(T)));
+    }
 }
