@@ -1,6 +1,5 @@
 #pragma once
 
-#include "typedef.h"
 #include "libc/str.h"
 
 namespace core

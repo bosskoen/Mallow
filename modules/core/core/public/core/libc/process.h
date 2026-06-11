@@ -1,5 +1,4 @@
 #pragma once
-#include "typedef.h"
 #include "compilers.h"
 
 namespace {

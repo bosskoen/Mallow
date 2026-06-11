@@ -1,4 +1,5 @@
 #pragma once
+#include "typedef.h"
 
 #if !defined(MLW_MSVC) && !defined(MLW_GCC) && !defined(MLW_CLANG)
     #error "unknown compiler - add compiler specific definitions"
@@ -22,6 +23,23 @@
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
 
     #define MLW_CTZ(x) __builtin_ctzll(x)
+#endif
+
+#if defined(MLW_MSVC)
+
+    static __forceinline usize mlw_clz64(u64 x)
+    {
+        unsigned long idx;
+        _BitScanReverse64(&idx, x);
+        return 63u - static_cast<usize>(idx);
+    }
+
+    #define MLW_CLZ(x) mlw_clz64(x)
+
+#elif defined(MLW_GCC) || defined(MLW_CLANG)
+
+    #define MLW_CLZ(x) __builtin_clzll(x)
+
 #endif
 
 #if defined(MLW_MSVC)

@@ -1,5 +1,4 @@
 #pragma once
-#include "typedef.h"
 #include "compilers.h"
 
 namespace
@@ -10,6 +9,13 @@ namespace
     extern "C" void *malloc(usize size);
     extern "C" void free(void *ptr);
     extern "C" void *realloc(void *ptr, usize size);
+
+#if defined(MLW_WINDOWS)
+    extern "C" void *_aligned_malloc(usize size, usize alignment);
+    extern "C" void _aligned_free(void *ptr);
+#else
+    extern "C" void *aligned_alloc(usize alignment, usize size);
+#endif
 
 }
 
@@ -57,19 +63,36 @@ namespace core
         return ::memset(dst, value, n);
     }
 
+    MLW_FORCE_INLINE void *mlwAlignedAlloc(usize size, u16 alignment)
+    {
+#if defined(MLW_WINDOWS)
+        return ::_aligned_malloc(size, alignment);
+#else
+        usize aligned_size = (size + alignment - 1) & ~(static_cast<usize>(alignment) - 1);
+        return ::aligned_alloc(alignment, aligned_size);
+#endif
+    }
 
+    MLW_FORCE_INLINE void mlwAlignedFree(void *ptr)
+    {
+#if defined(MLW_WINDOWS)
+        ::_aligned_free(ptr);
+#else
+        ::free(ptr);
+#endif
+    }
+    // void *mlwAlignedRealloc(void *ptr, usize newSize);
 
-    void *mlwAlignedAlloc(usize size, u16 alignment) ;
-    void mlwAlignedFree(void *ptr);
-    void *mlwAlignedRealloc(void *ptr, usize newSize);
-
-    MLW_FORCE_INLINE void *mlwMalloc(usize size){
+    MLW_FORCE_INLINE void *mlwMalloc(usize size)
+    {
         return malloc(size);
     }
-    MLW_FORCE_INLINE void mlwFree(void *ptr){
+    MLW_FORCE_INLINE void mlwFree(void *ptr)
+    {
         free(ptr);
     }
-    MLW_FORCE_INLINE void *mlwRealloc(void *ptr, usize newSize){
+    MLW_FORCE_INLINE void *mlwRealloc(void *ptr, usize newSize)
+    {
         return realloc(ptr, newSize);
     }
 }

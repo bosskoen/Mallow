@@ -55,3 +55,5 @@ using f64 = double;
 #else
     using index_t = i32;
 #endif
+
+using alignment_t = f64;

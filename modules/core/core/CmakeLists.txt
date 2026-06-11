@@ -24,6 +24,7 @@ target_sources(core
         public/core/libc/process.h
         public/core/libc/str.h
         public/core/libc/math.h
+        private/memory.cpp
 )
 
 target_include_directories(core

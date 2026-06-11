@@ -1,6 +1,60 @@
 #pragma once
-#include "typedef.h"
+#include "libc/mem.h"
+
+namespace core
+{
+
+    struct StackAllocator
+    {
+        void *base = nullptr;
+        usize capacity = 0;
+        usize offset = 0;
+
+        bool init(usize size);
+        void shutdown();
+
+        MLW_FORCE_INLINE ~StackAllocator() { shutdown(); };
+
+        StackAllocator(const StackAllocator &) = delete;
+        StackAllocator &operator=(const StackAllocator &) = delete;
+
+        StackAllocator(StackAllocator &&other) noexcept{
+            base = other.base;
+            capacity = other.capacity;
+            offset = other.offset;
+
+            other.base = nullptr;
+            other.capacity = 0;
+            other.offset = 0;
+        };
+        StackAllocator &operator=(StackAllocator &&other) noexcept{
+            if (this != &other){
+                base = other.base;
+                capacity = other.capacity;
+                offset = other.offset;
+
+                other.base = nullptr;
+                other.capacity = 0;
+                other.offset = 0;
+            }
+            return *this;
+        };
+
+        void *alloc(usize size, usize alignment);
+        void *alloc(usize size); // just calls alloc(size, alignof(max_align_t))
+
+        MLW_FORCE_INLINE usize mark() const { return offset; };                               // save current position
+        MLW_FORCE_INLINE void freeTo(usize mark) { offset = offset < mark ? offset : mark; }; // rewind to saved position
+        MLW_FORCE_INLINE void freeTo(void *ptr)
+        {
+            if (ptr > base)
+                offset = 0;
+            else if (reinterpret_cast<u8*>(ptr) - base < offset)
+                offset = reinterpret_cast<u8*>(ptr) - base;
+        };                                             // rewind to pointer (must be previously returned by alloc)
+        MLW_FORCE_INLINE void reset() { offset = 0; }; // rewind to 0
+    };
 
 
 
-
+}
