@@ -5,6 +5,7 @@
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
 #include <sys/mman.h>
+#include "memory.h"
 #endif
 
 bool core::StackAllocator::init(usize size)
@@ -66,4 +67,52 @@ void *core::StackAllocator::alloc(usize size)
     usize alignment = size >= sizeof(alignment_t) ? alignof(alignment_t) : 
                         size <=1 ? 1 : 1ull << (64 - MLW_CLZ(size - 1));
     return alloc(size, alignment);
+}
+
+bool core::BlockAllocator::init(usize size, usize b_size)
+{
+    if (base){
+        MLW_DEBUG_PRINT("BlockAllocator already initiolised");
+        return false;
+    }
+
+    block_size = mlwMax(sizeof(void*), b_size);
+
+    size = (size + PAGE_MASK) & ~PAGE_MASK; // round up to page size
+#if defined(MLW_WINDOWS)
+    base = ::VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+    base = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+#endif
+    if (base){
+        capacity = size;
+        usize block_count = (size / block_size);
+        first_free = base;
+        void* current = first_free;
+        for (usize i = 0; i < block_count; ++i){
+            void* next = static_cast<uint8*>(current) + block_size;
+            *static_cast<void**>(current) = next;
+            current = next;
+        }
+        *static_cast<void**>(current) = nullptr;
+        return true;
+
+    }
+    
+    return false;
+}
+
+void core::BlockAllocator::shutdown()
+{
+    if(base){
+#if defined(MLW_WINDOWS)
+        ::VirtualFree(base, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+        ::munmap(base, capacity);
+#endif
+    }
+    base = nullptr;
+    capacity = 0;
+    block_size = 0;
+    first_free = nullptr;
 }
