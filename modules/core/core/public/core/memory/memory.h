@@ -10,6 +10,9 @@ namespace core
         usize capacity = 0;
         usize offset = 0;
 
+        usize committed = 0;
+
+
         bool init(usize size);
         void shutdown();
 
@@ -24,9 +27,15 @@ namespace core
             capacity = other.capacity;
             offset = other.offset;
 
+            committed = other.committed;
+
+
             other.base = nullptr;
             other.capacity = 0;
             other.offset = 0;
+
+            other.committed = 0;
+
         };
         StackAllocator &operator=(StackAllocator &&other) noexcept
         {
@@ -35,10 +44,14 @@ namespace core
                 base = other.base;
                 capacity = other.capacity;
                 offset = other.offset;
+                committed = other.committed;
+
 
                 other.base = nullptr;
                 other.capacity = 0;
                 other.offset = 0;
+                other.committed = 0;
+
             }
             return *this;
         };
@@ -50,7 +63,7 @@ namespace core
         MLW_FORCE_INLINE void freeTo(usize mark) { offset = offset < mark ? offset : mark; }; // rewind to saved position
         MLW_FORCE_INLINE void freeTo(void *ptr)
         {
-            if (ptr >= base)
+            if (ptr <= base)
                 offset = 0;
             else if (reinterpret_cast<uint8 *>(ptr) - base < offset)
                 offset = reinterpret_cast<uint8 *>(ptr) - base;
@@ -86,6 +99,8 @@ namespace core
         bool init(usize size, usize b_size);
         void shutdown();
 
+        ~BlockAllocator() { shutdown(); };
+
         BlockAllocator(const BlockAllocator &) = delete;
         BlockAllocator &operator=(const BlockAllocator &) = delete;
 
@@ -118,16 +133,19 @@ namespace core
             return *this;
         };
 
-        void *alloc(){
-            if(first_free == nullptr){
+        void *alloc()
+        {
+            if (first_free == nullptr)
+            {
                 return nullptr;
             }
-            void* ret = first_free;
-            first_free = *static_cast<void**>(ret);
+            void *ret = first_free;
+            first_free = *static_cast<void **>(ret);
             return ret;
         };
-        void free(void *ptr){
-            *static_cast<void**>(ptr) = first_free;
+        void free(void *ptr)
+        {
+            *static_cast<void **>(ptr) = first_free;
             first_free = ptr;
         };
     };

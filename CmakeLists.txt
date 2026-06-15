@@ -50,7 +50,7 @@ elseif(MLW_NO_DEFAULT_LIBS)
         )
     else()
         add_compile_options(-nodefaultlibs)
-        add_link_libraries(c)
+        link_libraries(c)
     endif()
     message(STATUS "stdlib: no default libs, libc kept")
 
