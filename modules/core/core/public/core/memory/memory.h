@@ -57,7 +57,12 @@ namespace core
         };
 
         void *alloc(usize size, usize alignment);
-        void *alloc(usize size); // just calls alloc(size, alignof(max_align_t))
+        MLW_FORCE_INLINE void *alloc(usize size)
+        {
+            usize alignment = size >= sizeof(alignment_t) ? alignof(alignment_t) : size <= 1 ? 1
+                : 1ull << (64 - MLW_CLZ(size - 1));
+            return alloc(size, alignment);
+        }
 
         MLW_FORCE_INLINE usize mark() const { return offset; };                               // save current position
         MLW_FORCE_INLINE void freeTo(usize mark) { offset = offset < mark ? offset : mark; }; // rewind to saved position
@@ -148,5 +153,64 @@ namespace core
             *static_cast<void **>(ptr) = first_free;
             first_free = ptr;
         };
+    };
+
+    struct GAlloc{
+        struct Header {
+            uint64 pre_off :24 ;
+            uint64 next_off : 24;
+            uint64 align : 16; // what the block was aligned to, 0 if empty
+        };
+        struct Region{
+            Region* previus = nullptr;
+            Region* next = nullptr;
+            Header* free_block= nullptr;
+            static constexpr usize BLOCK_SIZE = 1 << 22 ;//4.194.304
+        };
+
+        void* first_region = nullptr;
+
+        explicit GAlloc();
+        ~GAlloc();
+        GAlloc(GAlloc&&);
+        GAlloc& operator = (GAlloc&&);
+        
+        GAlloc(const GAlloc&) = delete;
+        GAlloc& operator = (const GAlloc&) = delete;
+
+        void* allign_alloc(usize size, usize alloc); /*
+        {
+        switch on block size
+            to big to os
+            to small find block alloc lock and call free
+            just write:
+            get first region and in that regeion get first free block
+            if that blocks next block pointer 0 && the end of the region is far enoth || next block is > size
+                lock region
+                split block if nesesary but not if the left over is smaller than a constent
+                return pointer
+            else
+            goto just write or if the next region is nullptr alloc a new region
+        }*/
+        void* alloc(usize size); /*
+        {
+            return allign_alloc(size, some allignment)
+        }*/
+        void free(void* ptr);/*
+        {
+            switch were does the pointer live
+            if small lock call free
+            if big free
+            is medeum
+                find region lock it free block if it can be combide combid with other blocks else make now block and link corectly in list
+                if foll region is empty maby dealoc region
+
+        }
+        */
+
+        void* realloc(void* ptr, usize new_size);/*
+        {
+         extent or realoc
+        }*/
     };
 }

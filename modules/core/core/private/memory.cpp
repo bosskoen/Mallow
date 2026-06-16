@@ -88,12 +88,7 @@ void *core::StackAllocator::alloc(usize size, usize alignment)
     return ptr;
 }
 
-void *core::StackAllocator::alloc(usize size)
-{
-    usize alignment = size >= sizeof(alignment_t) ? alignof(alignment_t) : size <= 1 ? 1
-                                                                                     : 1ull << (64 - MLW_CLZ(size - 1));
-    return alloc(size, alignment);
-}
+
 
 bool core::BlockAllocator::init(usize size, usize b_size)
 {
