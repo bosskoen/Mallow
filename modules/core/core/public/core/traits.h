@@ -90,4 +90,40 @@ template <typename T> struct remove_ref<T&&> { using type = T; };
 template <typename T>
 using remove_ref_t = typename remove_ref<T>::type;
 
+
+// trivially copyable — compiler builtin, no way to implement without it
+template<typename T>
+struct is_trivially_copyable {
+    static constexpr bool value = __is_trivially_copyable(T);
+};
+
+// copy/move constructible and assignable — also builtins
+template<typename T>
+struct is_copy_constructible {
+    static constexpr bool value = __is_constructible(T, const T&);
+};
+
+template<typename T>
+struct is_move_constructible {
+    static constexpr bool value = __is_constructible(T, T&&);
+};
+
+template<typename T>
+struct is_copy_assignable {
+    static constexpr bool value = __is_assignable(T&, const T&);
+};
+
+template<typename T>
+struct is_move_assignable {
+    static constexpr bool value = __is_assignable(T&, T&&);
+};
+
+template<typename T> struct remove_cv                { using type = T; };
+template<typename T> struct remove_cv<const T>       { using type = T; };
+template<typename T> struct remove_cv<volatile T>    { using type = T; };
+template<typename T> struct remove_cv<const volatile T> { using type = T; };
+
+template<typename T>
+using remove_cv_t = typename remove_cv<T>::type;
+
 } // namespace core

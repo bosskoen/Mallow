@@ -25,6 +25,8 @@ target_sources(core
         public/core/libc/str.h
         public/core/libc/math.h
         private/memory.cpp
+        public/core/thread/atomic_op.h
+        public/core/thread/atomic.h
 )
 
 target_include_directories(core
