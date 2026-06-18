@@ -81,15 +81,6 @@ static __forceinline usize mlw_clz64(uint64 x)
 #define MLW_MO_SEQ_CST  __ATOMIC_SEQ_CST
 #endif
 
-// x86 and x86_64: same instruction
-#if defined(MLW_X64) || defined(MLW_X86)
-#define MLW_CPU_PAUSE() MLW_ASM volatile("pause" ::: "memory")
-
-// ARM32 ARMv7+: same yield instruction as ARM64
-#elif defined(MLW_ARM64) || defined(MLW_ARM32)
-#define MLW_CPU_PAUSE() MLW_ASM volatile("yield" ::: "memory")
-#endif
-
 
 #if defined(MLW_MSVC)
   #define MLW_COMPILER_BARRIER()  _ReadWriteBarrier()
