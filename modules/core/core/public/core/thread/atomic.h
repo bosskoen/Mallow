@@ -27,7 +27,7 @@ namespace core::sync
         Atomic &operator=(Atomic &&) = delete;
         // asinments
 
-        MLW_FORCE_INLINE T store(T val, MemoryOrder order) noexcept
+        MLW_FORCE_INLINE T store(T val, MemoryOrder order = MemoryOrder::Release) noexcept
         {
 
             if (order == MemoryOrder::Acquire)
@@ -58,10 +58,9 @@ namespace core::sync
 #endif
             return val;
         }
-        MLW_FORCE_INLINE T store(T v) noexcept { return store(v, MemoryOrder::Release); };
         MLW_FORCE_INLINE T operator=(T v) noexcept { return store(v); };
 
-        MLW_FORCE_INLINE T load(MemoryOrder order) const noexcept
+        MLW_FORCE_INLINE T load(MemoryOrder order = MemoryOrder::Acquire) const noexcept
         {
 
             if (order == MemoryOrder::Release)
@@ -88,14 +87,10 @@ namespace core::sync
             return __atomic_load_n(&value, static_cast<int>(order));
 #endif
         }
-        MLW_FORCE_INLINE T load() const noexcept { return load(MemoryOrder::Acquire); };
         MLW_FORCE_INLINE operator T() const noexcept { return load(); };
 
-        MLW_FORCE_INLINE T exchange(T val) noexcept
-        {
-            return mlwExchange(&value, val, MemoryOrder::AcqRel);
-        }
-        MLW_FORCE_INLINE T exchange(T val, MemoryOrder m) noexcept
+
+        MLW_FORCE_INLINE T exchange(T val, MemoryOrder m = MemoryOrder::AcqRel) noexcept
         {
             return mlwExchange(&value, val, m);
         }
@@ -213,7 +208,7 @@ namespace core::sync
         }
 
         MLW_FORCE_INLINE bool compareExchangeStrong(T &expected, T desired,
-                                                    MemoryOrder success, MemoryOrder fail) noexcept
+                                                    MemoryOrder success = MemoryOrder::AcqRel, MemoryOrder fail = MemoryOrder::Acquire) noexcept
         {
             // 1. clamp first — before stripping Release semantics
             if (fail > success)
@@ -227,13 +222,9 @@ namespace core::sync
             return mlwCasStrong(&value, expected, desired, success, fail);
         }
 
-        MLW_FORCE_INLINE bool compareExchangeStrong(T &expected, T desired) noexcept
-        {
-            return mlwCasStrong(&value, expected, desired, MemoryOrder::AcqRel, MemoryOrder::Acquire);
-        }
 
         MLW_FORCE_INLINE bool compareExchangeWeak(T &expected, T desired,
-                                                  MemoryOrder success, MemoryOrder fail) noexcept
+                                                  MemoryOrder success = MemoryOrder::AcqRel, MemoryOrder fail = MemoryOrder::Acquire) noexcept
         {
             // 1. clamp first — before stripping Release semantics
             if (fail > success)
@@ -247,9 +238,5 @@ namespace core::sync
             return mlwCasWeak(&value, expected, desired, success, fail);
         }
 
-        MLW_FORCE_INLINE bool compareExchangeWeak(T &expected, T desired) noexcept
-        {
-            return mlwCasWeak(&value, expected, desired, MemoryOrder::AcqRel, MemoryOrder::Acquire);
-        }
     };
 } // namespace core::sync

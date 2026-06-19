@@ -27,6 +27,8 @@ target_sources(core
         private/memory.cpp
         public/core/thread/atomic_op.h
         public/core/thread/atomic.h
+        public/core/thread/spinlock.h
+        public/core/thread/lock.h
 )
 
 target_include_directories(core
