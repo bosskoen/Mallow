@@ -1,6 +1,7 @@
 #include <core/macro.h>
 #include <core/libc/mem.h>
 
+
 f64 dev(f64 x, f64 v){
     return x/v;
 }

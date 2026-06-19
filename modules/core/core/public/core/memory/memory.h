@@ -1,5 +1,6 @@
 #pragma once
 #include "libc/mem.h"
+#include "thread/atomic.h"
 
 namespace core
 {

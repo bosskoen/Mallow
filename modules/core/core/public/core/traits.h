@@ -97,6 +97,16 @@ struct is_trivially_copyable {
     static constexpr bool value = __is_trivially_copyable(T);
 };
 
+template<typename T, typename... Args>
+struct is_constructible {
+    static constexpr bool value = __is_constructible(T, Args...);
+};
+
+template<typename T, typename... Args>
+inline constexpr bool is_constructible_v = is_constructible<T, Args...>::value;
+
+
+
 // copy/move constructible and assignable — also builtins
 template<typename T>
 struct is_copy_constructible {
@@ -117,6 +127,35 @@ template<typename T>
 struct is_move_assignable {
     static constexpr bool value = __is_assignable(T&, T&&);
 };
+
+
+// is_invocable — can F be called with Args...
+template<typename F, typename... Args>
+struct is_invocable {
+private:
+    template<typename G, typename... A>
+    static constexpr auto check(int)
+        -> decltype(declval<G>()(declval<A>()...), bool{}) { return true; }
+
+    template<typename...>
+    static constexpr bool check(...) { return false; }
+
+public:
+    static constexpr bool value = check<F, Args...>(0);
+};
+
+template<typename F, typename... Args>
+inline constexpr bool is_invocable_v = is_invocable<F, Args...>::value;
+
+
+template<typename F, typename... Args>
+struct invoke_result {
+    using type = decltype(declval<F>()(declval<Args>()...));
+};
+
+
+template<typename F, typename... Args>
+using invoke_result_t = typename invoke_result<F, Args...>::type;
 
 template<typename T> struct remove_cv                { using type = T; };
 template<typename T> struct remove_cv<const T>       { using type = T; };

@@ -1,4 +1,4 @@
-#app/CmakeLists.txt
+#app/CMakeLists.txt
 
 add_library(my_app STATIC)
 

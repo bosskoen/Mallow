@@ -1,4 +1,4 @@
-#core/core/CamkeLists.txt
+#core/core/CMakeLists.txt
 
 add_library(core STATIC)
 add_library(core::core ALIAS core)
@@ -29,6 +29,8 @@ target_sources(core
         public/core/thread/atomic.h
         public/core/thread/spinlock.h
         public/core/thread/lock.h
+        public/core/optional.h
+        public/core/compilers.h
 )
 
 target_include_directories(core

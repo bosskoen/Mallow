@@ -1,4 +1,4 @@
-#core/entry/CmakeLists.txt
+#core/entry/CMakeLists.txt
 
 add_executable(entry private/main.cpp)
 

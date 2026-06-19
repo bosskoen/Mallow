@@ -1,5 +1,4 @@
 #include "io/format.h"
-#include "memory/memory.h"
 
 #if defined(MLW_WINDOWS)
 #include <windows.h>

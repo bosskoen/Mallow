@@ -1,6 +1,7 @@
 #pragma once
 
 #include "atomic.h"
+#include "lock.h"
 
 namespace core::sync
 {
@@ -139,7 +140,7 @@ namespace core::sync
             {
                 Node* expected = nullptr;
                 me.next.store(nullptr);
-                me.locked.store(flase);
+                me.locked.store(false);
                 return tail.compareExchangeStrong(expected, &me,
                                                   MemoryOrder::Acquire, MemoryOrder::Relaxed);
             
