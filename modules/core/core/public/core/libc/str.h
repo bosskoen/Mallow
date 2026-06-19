@@ -3,12 +3,12 @@
 
 namespace
 {
-    extern "C" size_t strlen(const char *str);
+    extern "C" usize strlen(const char *str);
 }
 
 namespace core
 {
-    MLW_FORCE_INLINE size_t mlwStrlen(const char *str){
+    MLW_FORCE_INLINE usize mlwStrlen(const char *str){
         return strlen(str);
     }
 } // namespace core
