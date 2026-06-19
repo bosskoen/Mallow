@@ -8,7 +8,7 @@ namespace core::sync
     template <typename T>
     concept AtomicEligible =
         is_same_v<T, remove_cv_t<T>> &&
-        (sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8) &&
+        (sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8) && sizeof(T) <= sizeof(usize) &&
         (core::is_integer_v<T> || core::is_float_v<T> || core::is_pointer_v<T> || core::is_bool_v<T>);
 
     template <AtomicEligible T>
@@ -215,6 +215,15 @@ namespace core::sync
         MLW_FORCE_INLINE bool compareExchangeStrong(T &expected, T desired,
                                                     MemoryOrder success, MemoryOrder fail) noexcept
         {
+            // 1. clamp first — before stripping Release semantics
+            if (fail > success)
+                fail = success;
+
+            // 2. then fix invalid orders for a fail path (no write happened)
+            if (fail == MemoryOrder::Release)
+                fail = MemoryOrder::Relaxed;
+            if (fail == MemoryOrder::AcqRel)
+                fail = MemoryOrder::Acquire;
             return mlwCasStrong(&value, expected, desired, success, fail);
         }
 
@@ -226,7 +235,15 @@ namespace core::sync
         MLW_FORCE_INLINE bool compareExchangeWeak(T &expected, T desired,
                                                   MemoryOrder success, MemoryOrder fail) noexcept
         {
-            //TOOD order stuf
+            // 1. clamp first — before stripping Release semantics
+            if (fail > success)
+                fail = success;
+
+            // 2. then fix invalid orders for a fail path (no write happened)
+            if (fail == MemoryOrder::Release)
+                fail = MemoryOrder::Relaxed;
+            if (fail == MemoryOrder::AcqRel)
+                fail = MemoryOrder::Acquire;
             return mlwCasWeak(&value, expected, desired, success, fail);
         }
 

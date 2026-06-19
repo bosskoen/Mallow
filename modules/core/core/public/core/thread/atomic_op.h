@@ -12,6 +12,13 @@ namespace core::sync
         AcqRel = MLW_MO_ACQ_REL,
         SeqCst = MLW_MO_SEQ_CST,
     };
+
+    //make shure teh oreder is corect for cas operation to work corectly
+    static_assert((int)MemoryOrder::Relaxed < (int)MemoryOrder::Acquire);
+    static_assert((int)MemoryOrder::Acquire < (int)MemoryOrder::Release);
+    static_assert((int)MemoryOrder::Release < (int)MemoryOrder::AcqRel);
+    static_assert((int)MemoryOrder::AcqRel  < (int)MemoryOrder::SeqCst);    
+
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1)
     MLW_FORCE_INLINE T mlwFetchAdd(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
