@@ -24,7 +24,7 @@ namespace core
 
         MLW_FORCE_INLINE constexpr CStr(const char *ptr, index_t len) : ptr(ptr), len(len) {}
 
-        MLW_FORCE_INLINE static constexpr CStr fromPtr(const char *ptr)
+        MLW_FORCE_INLINE static CStr fromPtr(const char *ptr)
         {
             return CStr(ptr, mlwStrlen(ptr));
         }
