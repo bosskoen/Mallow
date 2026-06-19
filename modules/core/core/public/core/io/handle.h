@@ -8,8 +8,8 @@ namespace io
         Handle(void* h) : fd(h) {}; // no explised
         void* fd;
 #else
-        Handle(i32 h) : fd(h) {};
-        i32 fd;
+        Handle(int32 h) : fd(h) {};
+        int32 fd;
 #endif
     };
 } // namespace core::io
