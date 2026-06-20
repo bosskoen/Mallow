@@ -8,4 +8,4 @@ CONFIG=${1:-Debug}
 sh tools/build.sh $CONFIG
 
 echo "running..."
-./build/Mallow
+./build/modules/core/entry/Mallow

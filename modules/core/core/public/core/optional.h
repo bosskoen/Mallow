@@ -1,5 +1,8 @@
 #pragma once
 #include "macro.h"
+#include "traits.h"
+
+#include <new>
 
 namespace core
 {
@@ -57,14 +60,16 @@ namespace core
             new (storage) T(forward<Args>(args)...);
         }
 
-        Optional(const T &val) : has_value(true)
-                                     requires core::is_copy_constructible_v<T>
+        Optional(const T &val)
+            requires core::is_copy_constructible_v<T>
+            : has_value(true)
         {
             new (storage) T(val);
         }
 
-        Optional(T &&val) : has_value(true)
-                                requires core::is_move_constructible_v<T>
+        Optional(T &&val)
+            requires core::is_move_constructible_v<T>
+            : has_value(true)
         {
             new (storage) T(move(val));
         }
@@ -145,7 +150,7 @@ namespace core
         T &emplace(Args &&...args)
         {
             reset();
-            new (storage) T(forward<Args>(args)...);
+            new (storage) T{forward<Args>(args)...};
             has_value = true;
             return *ptr();
         }

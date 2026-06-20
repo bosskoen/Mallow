@@ -114,9 +114,15 @@ struct is_copy_constructible {
 };
 
 template<typename T>
+constexpr bool is_copy_constructible_v = is_copy_constructible<T>::value;
+
+template<typename T>
 struct is_move_constructible {
     static constexpr bool value = __is_constructible(T, T&&);
 };
+
+template<typename T>
+constexpr bool is_move_constructible_v = is_move_constructible<T>::value;
 
 template<typename T>
 struct is_copy_assignable {
@@ -130,6 +136,40 @@ struct is_move_assignable {
 
 
 // is_invocable — can F be called with Args...
+
+template<typename T>
+struct add_rvalue_reference {
+    using type = T&&;
+};
+
+template<>
+struct add_rvalue_reference<void> {
+    using type = void;
+};
+
+template<>
+struct add_rvalue_reference<const void> {
+    using type = const void;
+};
+
+template<>
+struct add_rvalue_reference<volatile void> {
+    using type = volatile void;
+};
+
+template<>
+struct add_rvalue_reference<const volatile void> {
+    using type = const volatile void;
+};
+
+template<typename T>
+using add_rvalue_reference_t =
+    typename add_rvalue_reference<T>::type;
+
+    
+template<typename T>
+typename add_rvalue_reference<T>::type declval() noexcept;
+
 template<typename F, typename... Args>
 struct is_invocable {
 private:
@@ -165,4 +205,19 @@ template<typename T> struct remove_cv<const volatile T> { using type = T; };
 template<typename T>
 using remove_cv_t = typename remove_cv<T>::type;
 
+
+template<typename T>
+ constexpr remove_ref_t<T>&& move(T&& t) noexcept {
+     return static_cast<remove_ref_t<T>&&>(t);
+ }
+
+template<typename T>
+constexpr T&& forward(remove_ref_t<T>& t) noexcept {
+    return static_cast<T&&>(t);
+}
+
+template<typename T>
+constexpr T&& forward(remove_ref_t<T>&& t) noexcept {
+    return static_cast<T&&>(t);
+}
 } // namespace core

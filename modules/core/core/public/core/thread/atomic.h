@@ -89,7 +89,6 @@ namespace core::sync
         }
         MLW_FORCE_INLINE operator T() const noexcept { return load(); };
 
-
         MLW_FORCE_INLINE T exchange(T val, MemoryOrder m = MemoryOrder::AcqRel) noexcept
         {
             return mlwExchange(&value, val, m);
@@ -222,7 +221,6 @@ namespace core::sync
             return mlwCasStrong(&value, expected, desired, success, fail);
         }
 
-
         MLW_FORCE_INLINE bool compareExchangeWeak(T &expected, T desired,
                                                   MemoryOrder success = MemoryOrder::AcqRel, MemoryOrder fail = MemoryOrder::Acquire) noexcept
         {
@@ -235,8 +233,8 @@ namespace core::sync
                 fail = MemoryOrder::Relaxed;
             if (fail == MemoryOrder::AcqRel)
                 fail = MemoryOrder::Acquire;
+
             return mlwCasWeak(&value, expected, desired, success, fail);
         }
-
     };
 } // namespace core::sync

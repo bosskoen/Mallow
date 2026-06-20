@@ -27,7 +27,7 @@ namespace core::sync
                 {
                     return true;
                 }
-                return false
+                return false;
             };
             MLW_FORCE_INLINE void lock()
             {
@@ -39,7 +39,7 @@ namespace core::sync
                     bool expected = false;
                     if (lock_value.compareExchangeWeak(expected, true, MemoryOrder::Acquire, MemoryOrder::Relaxed))
                     {
-                        return true;
+                        return;
                     }
                 }
             };
@@ -53,7 +53,7 @@ namespace core::sync
         {
         private:
             Atomic<uint32> next_ticket{0};
-            Atomic<uint32> now_servering{0};
+            Atomic<uint32> now_serving{0};
 
         public:
             TicketLock() = default;
@@ -80,7 +80,7 @@ namespace core::sync
                     MLW_CPU_PAUSE();
             };
             MLW_FORCE_INLINE void unlock() {
-                now_servering.fetchAdd(1, MemoryOrder::Release)
+                now_serving.fetchAdd(1, MemoryOrder::Release);
             };
         };
 
@@ -116,7 +116,7 @@ namespace core::sync
                 if (next == nullptr)
                 {
                     Node *expected = &me;
-                    if (tail.compareExchangeStrong(expected, nullptr,
+                    if (tail.compareExchangeStrong(expected, static_cast<Node*>(nullptr),
                                                    MemoryOrder::Release, MemoryOrder::Relaxed))
                         return;
 
@@ -125,9 +125,6 @@ namespace core::sync
                 }
                 next->locked.store(false, MemoryOrder::Release);
             }
-
-            // only Lock<MCS> can call lock/unlock
-            friend struct Lock<MCS>;
 
             MCS() = default;
             ~MCS() = default;
@@ -139,28 +136,33 @@ namespace core::sync
             MLW_FORCE_INLINE bool tryLock(Node& me) noexcept
             {
                 Node* expected = nullptr;
-                me.next.store(nullptr);
-                me.locked.store(false);
+                me.next.store(nullptr, MemoryOrder::Relaxed);
+                me.locked.store(false, MemoryOrder::Relaxed);
                 return tail.compareExchangeStrong(expected, &me,
                                                   MemoryOrder::Acquire, MemoryOrder::Relaxed);
             
             }
         };
+    } // namespace spin_lock
 
         // specialization — carries the node
         template <>
-        struct Lock<MCS>
+        struct Lock<spin_lock::MCS>
         {
         private:
-            MCS &lock_obj;
-            MCS::Node me; // lives on the stack here, exactly as long as the lock
-            bool locked = flase;
+            spin_lock::MCS &lock_obj;
+            spin_lock::MCS::Node me; // lives on the stack here, exactly as long as the lock
+            bool locked = false;
+
+            struct AdoptTag{};
+            MLW_FORCE_INLINE Lock(spin_lock::MCS& obj, AdoptTag): lock_obj(obj), locked(true){}
+            friend Optional<Lock<spin_lock::MCS>>;
         public:
             MLW_FORCE_INLINE void unlock() {if(locked) { lock_obj.unlock(me); locked = false;}}
 
             Lock() = delete;
 
-            MLW_FORCE_INLINE explicit Lock(MCS &obj) : lock_obj(obj)
+            MLW_FORCE_INLINE explicit Lock(spin_lock::MCS &obj) : lock_obj(obj)
             {
                 lock_obj.lock(me);
                 locked = true;
@@ -168,7 +170,17 @@ namespace core::sync
 
             MLW_FORCE_INLINE ~Lock()
             {
-                unlock()
+                unlock();
+            }
+
+            MLW_FORCE_INLINE static void tryLock(spin_lock::MCS& obj, Optional<Lock<spin_lock::MCS>>& result){
+                result.reset();
+                result.emplace(obj, AdoptTag{});
+                if(!result->lock_obj.tryLock(result->me)){
+                    result->locked = false;
+                    result.reset();
+                }
+
             }
 
             //try lock
@@ -177,6 +189,5 @@ namespace core::sync
             Lock(Lock &&) = delete;
             Lock &operator=(Lock &&) = delete;
         };
-    } // namespace spin_lock
 
 } // namespace core::sync

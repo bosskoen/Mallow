@@ -1,7 +1,7 @@
 #pragma once
-#include "compilers.h"
-#include "traits.h"
-#include "cmath"
+#include "../compilers.h"
+#include "../traits.h"
+
 namespace
 {
     extern "C" double copysign(double x, double y);
@@ -14,10 +14,6 @@ namespace
 
     extern "C" double pow(double base, double power);
     extern "C" float powf(float base, float power);
-#if !defined(MLW_MSVC)
-    extern "C" double pow10(double x);
-    extern "C" float pow10f(float x);
-#endif
 
     extern "C" double log2(double x);
     extern "C" float log2f(float x);
@@ -83,22 +79,6 @@ namespace core
     MLW_FORCE_INLINE f32 mlwPow(f32 base, f32 power)
     {
         return powf(base, power);
-    }
-    MLW_FORCE_INLINE f64 mlwPow10(f64 x)
-    {
-#if defined(MLW_MSVC)
-        return pow(10.0, x);
-#else
-        return pow10(x);
-#endif
-    }
-    MLW_FORCE_INLINE f32 mlwPow10(f32 x)
-    {
-#if defined(MLW_MSVC)
-        return powf(10.0f, x);
-#else
-        return pow10f(x);
-#endif
     }
 
     MLW_FORCE_INLINE f64 mlwLog2(f64 x)

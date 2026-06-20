@@ -46,6 +46,8 @@ static __forceinline usize mlw_clz64(uint64 x)
 
 #endif
 
+
+
 #if defined(MLW_MSVC)
 #define MLW_FORCE_INLINE __forceinline
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
@@ -81,6 +83,25 @@ static __forceinline usize mlw_clz64(uint64 x)
 #define MLW_MO_SEQ_CST  __ATOMIC_SEQ_CST
 #endif
 
+#if defined(MLW_MSVC)
+    #if defined(MLW_X64) || defined(MLW_X86)
+        // forward declare MSVC x86/x64 intrinsics manually
+        extern "C" void  _ReadWriteBarrier();
+        extern "C" void  _mm_pause();
+        extern "C" void  _mm_mfence();
+        extern "C" void  _mm_lfence();
+        extern "C" void  _mm_sfence();
+
+        #pragma intrinsic(_ReadWriteBarrier)
+        #pragma intrinsic(_mm_pause)
+        #pragma intrinsic(_mm_mfence)
+        #pragma intrinsic(_mm_lfence)
+        #pragma intrinsic(_mm_sfence)
+    #elif defined(MLW_ARM64)
+        extern "C" void __yield();
+        extern "C" void __dmb(unsigned int);
+    #endif
+#endif
 
 #if defined(MLW_MSVC)
   #define MLW_COMPILER_BARRIER()  _ReadWriteBarrier()

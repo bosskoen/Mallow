@@ -1,6 +1,8 @@
 #include <core/macro.h>
 #include <core/libc/mem.h>
+#include <core/thread/spinlock.h>
 
+using namespace core::sync;
 
 f64 dev(f64 x, f64 v){
     return x/v;
@@ -64,8 +66,22 @@ int mallowMain() {
     void* ptr = core::mlwAlignedAlloc(100, 64);
     static_cast<char*>(ptr)[0] = 1;
 
-    core::CStr thing = core::CStr::CStr(static_cast<char*>(ptr), 100); 
+    core::CStr thing = core::CStr{static_cast<char*>(ptr), 100}; 
     print("Hello, {}! {} {} {} {} {}", thing, 2, 3.14, &x, x, ptr);
     float_test();
+
+    spin_lock::TTAS l{};
+
+    Lock<spin_lock::TTAS> b{l};
+
+    core::Optional<Lock<spin_lock::TTAS>> v{};
+
+    Lock<spin_lock::TTAS>::tryLock(l, v);
+
+    
+    if(v.isNone()){
+        println("hell");
+    }
+
     return 0;
 }

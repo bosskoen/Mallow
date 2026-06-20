@@ -1,8 +1,8 @@
 #pragma once
-#include "c_string.h"
-#include "traits.h"
-#include "libc/mem.h"
-#include "libc/math.h"
+#include "../c_string.h"
+#include "../traits.h"
+#include "../libc/mem.h"
+#include "../libc/math.h"
 
 namespace core
 {
@@ -157,7 +157,7 @@ namespace core
             {
                 // use scientific notation
                 int64 exponent = static_cast<int64>(mlwFloor(mlwLog10(value)));
-                value /= mlwPow10(static_cast<f64>(exponent));
+                value /= mlwPow(10.0,static_cast<f64>(exponent));
 
                 if (value >= 10.0)
                 {
@@ -247,7 +247,7 @@ namespace core
                 else
                 {
                     buffer.append('{');
-                    for (size_t i = 0; i < is_array<T>::size; ++i)
+                    for (usize i = 0; i < is_array<T>::size; ++i)
                     {
                         formatValue(buffer, value[i]);
                         if (i + 1 < is_array<T>::size)

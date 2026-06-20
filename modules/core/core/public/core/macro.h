@@ -4,10 +4,11 @@
 #include "io/terminal.h"
 #include "io/io.h"
 
+
 #define write(buffer, format_str, ...)                                                                                                                                     \
     do                                                                                                                                                                     \
     {                                                                                                                                                                      \
-        static_assert([](auto &&...args) consteval { return (core::FormattableValue<core::remove_ref_t<decltype(args)>, core::FormatBufferType> && ...); }(##__VA_ARGS__), \
+        static_assert([](auto &&...args) consteval { return (core::FormattableValue<core::remove_ref_t<decltype(args)>, core::FormatBufferType> && ...); }(__VA_ARGS__), \
                       "write has an unformattable argument");                                                                                                              \
         static_assert(core::FormatBuffer<decltype(buffer)>, "write has an incompatible buffer");                                                                           \
         core::detail::format(buffer, core::CStr(format_str), ##__VA_ARGS__);                                                                                               \
@@ -16,9 +17,9 @@
 #define _MLW_WRITE_IMPL(handle, newline, format_str, ...)                                                       \
     do                                                                                                          \
     {                                                                                                           \
-        if constexpr ([](auto &&...args) consteval { return sizeof...(args); }(##__VA_ARGS__) == 0 && !newline) \
+        if constexpr ([](auto &&...args) consteval { return sizeof...(args); }(__VA_ARGS__) == 0 && !newline) \
         {                                                                                                       \
-            io::writeHandle(handle, core::CStr(format_str));                                              \
+            io::writeHandle(handle, core::CStr(format_str));                                                    \
         }                                                                                                       \
         else                                                                                                    \
         {                                                                                                       \
@@ -27,7 +28,7 @@
             write(buf, format_str, ##__VA_ARGS__);                                                              \
             if constexpr (newline)                                                                              \
                 buf.append('\n');                                                                               \
-            io::writeHandle(handle, core::CStr(buf.ptr, buf.len));                                        \
+            io::writeHandle(handle, core::CStr(buf.ptr, buf.len));                                              \
         }                                                                                                       \
     } while (0)
 
@@ -47,14 +48,14 @@
     {                                                   \
         eprintln("panic at {}:{}", __FILE__, __LINE__); \
         eprint(format_str, ##__VA_ARGS__);              \
-        core::terminate(1);                             \
+        core::mlwTerminate(1);                             \
     } while (0)
 
 #define TODO()                                    \
     do                                            \
     {                                             \
         eprint("TODO {}:{}", __FILE__, __LINE__); \
-        core::exit(1);                            \
+        core::mlwExit(1);                            \
     } while (0)
 // TODO
 //      document how to use

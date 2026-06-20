@@ -1,6 +1,6 @@
 #pragma once
 #include "handle.h"
-#include "c_string.h"
+#include "../c_string.h"
 
 namespace io
 {

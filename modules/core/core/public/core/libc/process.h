@@ -1,9 +1,9 @@
 #pragma once
-#include "compilers.h"
+#include "../compilers.h"
 
 namespace {
-    extern "C" void exit(int status);
-    extern "C" void _Exit(int status);
+    extern "C" MLW_NO_RETURN void exit(int status);
+    extern "C" MLW_NO_RETURN void _Exit(int status);
 }
 
 namespace core{
