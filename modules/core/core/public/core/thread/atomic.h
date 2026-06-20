@@ -1,6 +1,7 @@
 #pragma once
 
 #include "atomic_op.h"
+#include "../macro.h"
 
 namespace core::sync
 {
@@ -235,6 +236,11 @@ namespace core::sync
                 fail = MemoryOrder::Acquire;
 
             return mlwCasWeak(&value, expected, desired, success, fail);
+        }
+        
+        template<core::FormatBuffer Buf>
+        void format(Buf& buffer) const {
+            write(buffer, "{}", load(MemoryOrder::Relaxed));
         }
     };
 } // namespace core::sync

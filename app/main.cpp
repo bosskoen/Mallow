@@ -4,6 +4,18 @@
 
 using namespace core::sync;
 
+struct asdsa{
+    bool x = true;
+
+    const bool* ptr()const{ return &x;}
+
+    template<core::FormatBuffer Buf>
+    void format(Buf& buffer) const {
+        const bool x = ptr();
+        write(buffer, "this is a int: {}", x);
+    }
+};
+
 f64 dev(f64 x, f64 v){
     return x/v;
 }
@@ -78,10 +90,14 @@ int mallowMain() {
 
     Lock<spin_lock::TTAS>::tryLock(l, v);
 
+    core::Optional<bool> opt_bool{true};
+
+    Atomic<uint16> vase{2141};
     
     if(v.isNone()){
-        println("hell");
+        println("hell {} {}", asdsa{}, vase);
     }
+
 
     return 0;
 }

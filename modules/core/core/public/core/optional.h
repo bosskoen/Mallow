@@ -229,6 +229,17 @@ namespace core
             reset();
             return val;
         }
+
+        //
+        template<core::FormatBuffer Buf>
+           // requires core::FormattableValue<T, Buf> 
+        void format(Buf& buffer) const{
+            if(isSome()){
+                write(buffer, "{}",  *ptr());
+            }else{
+                write(buffer, "None");
+            }
+        }
     };
 
     // ── reference specialization ──────────────────────────────────────────
@@ -282,6 +293,17 @@ namespace core
         T &unwrapOr(T &default_val)
         {
             return ptr ? *ptr : default_val;
+        }
+
+        //
+        template<core::FormatBuffer Buf>
+            //requires core::FormattableValue<T, Buf> 
+        void format(Buf& buffer) const{
+            if(isSome()){
+                write(buffer, "{}",  *ptr);
+            }else{
+                write(buffer, "None");
+            }
         }
     };
 

@@ -3,6 +3,9 @@
 
 namespace core{
 
+template<typename... Ts> struct type_list{};
+
+
 // is_same
 template<typename A, typename B> struct is_same       { static constexpr bool value = false; };
 template<typename A>             struct is_same<A, A> { static constexpr bool value = true;  };
@@ -205,6 +208,10 @@ template<typename T> struct remove_cv<const volatile T> { using type = T; };
 template<typename T>
 using remove_cv_t = typename remove_cv<T>::type;
 
+template<typename T> struct remove_const {using type = T;};
+template<typename T> struct remove_const<const T> {using type = T;};
+template<typename T>
+using remove_const_t = typename remove_const<T>::type;
 
 template<typename T>
  constexpr remove_ref_t<T>&& move(T&& t) noexcept {

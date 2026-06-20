@@ -21,6 +21,7 @@ option(MLW_NO_BUILTINS     "Disable compiler builtin functions"         OFF) # l
 # always strip rtti and exceptions
 if(MSVC)
     add_compile_options(/GR- /EHs-c-)
+    add_compile_options(/Zc:preprocessor)
 else()
     add_compile_options(-fno-rtti -fno-exceptions)
 endif()

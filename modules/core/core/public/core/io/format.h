@@ -19,17 +19,17 @@ namespace core
     };
 
     // remove the buffer and just use formateble???
-    template <typename T, typename Buffer>
-    concept FormattableValue =
-        is_array_v<T> ||
-        is_same_v<T, CStr> ||
-        is_same_v<T, const char *> ||
-        is_same_v<T, char> ||
-        is_bool_v<T> ||
-        is_integer_v<T> ||
-        is_float_v<T> ||
-        is_pointer_v<T> ||
-        Formattable<T, Buffer>;
+template <typename T, typename Buffer>
+concept FormattableValue =
+    is_array_v<remove_const_t<T>> ||
+    is_same_v<remove_const_t<T>, CStr> ||
+    is_same_v<remove_const_t<T>, const char *> ||
+    is_same_v<remove_const_t<T>, char> ||
+    is_bool_v<remove_const_t<T>> ||
+    is_integer_v<remove_const_t<T>> ||
+    is_float_v<remove_const_t<T>> ||
+    is_pointer_v<remove_const_t<T>> ||
+    Formattable<T, Buffer>;
 
     struct FormatBufferType
     {
@@ -238,9 +238,10 @@ namespace core
             requires FormattableValue<T, Buffer>
         void formatValue(Buffer &buffer, const T &value)
         {
-            if constexpr (is_array_v<T>)
+            using U = remove_const_t<T>;
+            if constexpr (is_array_v<U>)
             {
-                if constexpr (is_same_v<typename is_array<T>::Valuetype, char>)
+                if constexpr (is_same_v<typename is_array<U>::Valuetype, char>)
                 {
                     buffer.append(CStr::fromPtr(value));
                 }
@@ -256,25 +257,25 @@ namespace core
                     buffer.append('}');
                 }
             }
-            else if constexpr (is_same_v<T, CStr>)
+            else if constexpr (is_same_v<U, CStr>)
             {
                 buffer.append(value);
             }
-            else if constexpr (is_same_v<T, const char *>)
+            else if constexpr (is_same_v<U, const char *>)
             {
                 buffer.append(CStr::fromPtr(value));
             }
-            else if constexpr (is_same_v<T, char>)
+            else if constexpr (is_same_v<U, char>)
             {
                 buffer.append(value);
             }
-            else if constexpr (is_bool_v<T>)
+            else if constexpr (is_bool_v<U>)
             {
                 buffer.append(value ? CStr("true") : CStr("false"));
             }
-            else if constexpr (is_integer_v<T>)
+            else if constexpr (is_integer_v<U>)
             {
-                if constexpr (is_signed_v<T>)
+                if constexpr (is_signed_v<U>)
                 {
                     formatInt(buffer, static_cast<int64>(value));
                 }
@@ -283,7 +284,7 @@ namespace core
                     formatUInt(buffer, static_cast<uint64>(value));
                 }
             }
-            else if constexpr (is_float_v<T>)
+            else if constexpr (is_float_v<U>)
             {
                 formatFloat(buffer, value);
             }
@@ -291,13 +292,13 @@ namespace core
             {
                 value.format(buffer);
             }
-            else if constexpr (is_pointer_v<T>)
+            else if constexpr (is_pointer_v<U>)
             {
                 formatHex(buffer, reinterpret_cast<usize>(value));
             }
             else
             {
-                static_assert(!is_same_v<T, T>, "type does not implement format");
+                static_assert(!is_same_v<U, U>, "type does not implement format");
             }
         }
         template <FormatBuffer Buffer>
@@ -325,7 +326,7 @@ namespace core
         template <typename... Args>
         consteval bool checkFormattable()
         {
-            return (FormattableValue<remove_ref_t<Args>, FormatBufferType> && ...);
+            return (FormattableValue<remove_const_t<remove_ref_t<Args>>, FormatBufferType> && ...);
         }
 
         template <typename... Args>
