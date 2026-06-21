@@ -7,7 +7,7 @@
 #define _MLW_CHECK_ARGS(...) \
     __VA_OPT__(core::remove_ref_t<decltype(__VA_ARGS__)>)
 
-#define write(buffer, format_str, ...)                                                                             \
+#define mlw_write(buffer, format_str, ...)                                                                             \
     do                                                                                                             \
     {                                                                                                              \
         static_assert(core::detail::checkFormattable<_MLW_CHECK_ARGS(__VA_ARGS__)>(),     \
@@ -27,7 +27,7 @@
         {                                                                                                     \
             core::FormatBufferType &buf = core::detail::getFormatBuffer();                                    \
             buf.len = 0;                                                                                      \
-            write(buf, format_str, ##__VA_ARGS__);                                                            \
+            mlw_write(buf, format_str, ##__VA_ARGS__);                                                            \
             if constexpr (newline)                                                                            \
                 buf.append('\n');                                                                             \
             io::writeHandle(handle, core::CStr(buf.ptr, buf.len));                                            \

@@ -252,7 +252,7 @@ namespace core::sync
         template <core::FormatBuffer Buf>
         void format(Buf &buffer) const
         {
-            write(buffer, "{}", load(MemoryOrder::Relaxed));
+            mlw_write(buffer, "{}", load(MemoryOrder::Relaxed));
         }
     };
 } // namespace core::sync

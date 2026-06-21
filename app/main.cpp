@@ -11,7 +11,7 @@ struct asdsa{
     template<core::FormatBuffer Buf>
     void format(Buf& buffer) const {
         const bool x = ptr();
-        write(buffer, "this is a int: {}", x);
+        mlw_write(buffer, "this is a int: {}", x);
     }
 };
 
