@@ -1,6 +1,5 @@
-#include <core/macro.h>
-#include <core/libc/mem.h>
 #include <core/thread/spinlock.h>
+#include <core/thread/mutex.h>
 
 using namespace core::sync;
 
@@ -77,18 +76,18 @@ int mallowMain() {
 
     void* ptr = core::mlwAlignedAlloc(100, 64);
     static_cast<char*>(ptr)[0] = 1;
-
+    print("some text\n");
     core::CStr thing = core::CStr{static_cast<char*>(ptr), 100}; 
     print("Hello, {}! {} {} {} {} {}", thing, 2, 3.14, &x, x, ptr);
     float_test();
 
-    spin_lock::TTAS l{};
+    Mutex l{};
 
-    Lock<spin_lock::TTAS> b{l};
+    Lock<Mutex> b{l};
 
-    core::Optional<Lock<spin_lock::TTAS>> v{};
+    core::Optional<Lock<Mutex>> v{};
 
-    Lock<spin_lock::TTAS>::tryLock(l, v);
+    Lock<Mutex>::tryLock(l, v);
 
     core::Optional<bool> opt_bool{true};
 

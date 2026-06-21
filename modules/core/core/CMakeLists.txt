@@ -3,6 +3,9 @@
 add_library(core STATIC)
 add_library(core::core ALIAS core)
 
+if(WIN32)
+    target_link_libraries(core PRIVATE synchronization)
+endif()
 
 target_sources(core
     PRIVATE
@@ -31,6 +34,8 @@ target_sources(core
         public/core/thread/lock.h
         public/core/optional.h
         public/core/compilers.h
+        private/mutex.cpp
+        public/core/thread/mutex.h
 )
 
 target_include_directories(core

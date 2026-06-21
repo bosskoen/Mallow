@@ -1,6 +1,5 @@
 #pragma once
 #include "../c_string.h"
-#include "../traits.h"
 #include "../libc/mem.h"
 #include "../libc/math.h"
 

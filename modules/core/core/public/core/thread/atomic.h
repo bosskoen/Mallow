@@ -28,6 +28,17 @@ namespace core::sync
         Atomic &operator=(Atomic &&) = delete;
         // asinments
 
+        const T *rawPtr() const noexcept
+        {
+            return &value;
+        }
+
+        // Explicit escape hatch — caller acknowledges they're doing something unsafe
+        T *rawPtrUnsafe() noexcept
+        {
+            return &value;
+        }
+
         MLW_FORCE_INLINE T store(T val, MemoryOrder order = MemoryOrder::Release) noexcept
         {
 
@@ -237,9 +248,10 @@ namespace core::sync
 
             return mlwCasWeak(&value, expected, desired, success, fail);
         }
-        
-        template<core::FormatBuffer Buf>
-        void format(Buf& buffer) const {
+
+        template <core::FormatBuffer Buf>
+        void format(Buf &buffer) const
+        {
             write(buffer, "{}", load(MemoryOrder::Relaxed));
         }
     };
