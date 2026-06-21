@@ -6,6 +6,7 @@
 #elif defined(MLW_LINUX) 
 #include <linux/futex.h>
 #include <sys/syscall.h>
+#include <unistd.h>
 #elif defined(MLW_MAC)
 #include <os/ulock.h>
 #endif
