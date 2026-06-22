@@ -67,10 +67,6 @@ struct asdsa{
     }
 };
 
-f64 dev(f64 x, f64 v){
-    return x/v;
-}
-
 void float_test(){
     // basic values
 println("zero:        {}", 0.0);
@@ -99,27 +95,29 @@ println("1e20:        {}", 1e20);
 println("negative lg: {}", -1e20);
 
 // special
-uint64 infBits = 0x7FF0000000000000ULL;
-uint64 negInfBits = 0xFFF0000000000000ULL;
-uint64 nanBits = 0x7FF8000000000000ULL;
-
-f64 posInf, negInf, nan;
-core::mlwMemcpy(&posInf, &infBits, sizeof(f64));
-core::mlwMemcpy(&negInf, &negInfBits, sizeof(f64));
-core::mlwMemcpy(&nan, &nanBits, sizeof(f64));
-
-println("NaN:  {}", nan);
-println("+Inf: {}", posInf);
-println("-Inf: {}", negInf);
-
+println("NaN:  {}", core::NumericLimits<f64>::nan);
+println("+Inf: {}", core::NumericLimits<f64>::infinity);
+println("-Inf: {}", -core::NumericLimits<f64>::infinity);
+println("float inf:   {}", core::NumericLimits<f32>::infinity);
 // float promoted to double
 f32 f = 3.14f;
 println("float:       {}", f);
-uint32 fInfBits = 0x7F800000U;
-f32 fInf;
-core::mlwMemcpy(&fInf, &fInfBits, sizeof(f32));
-println("float inf:   {}", fInf);
+
 }
+
+void numeric_limits_test(){
+    println("u8  max: {}", core::NumericLimits<uint8>::max);   // 255
+    println("i8  min: {}", core::NumericLimits<int8>::min);    // -128
+    println("u32 max: {}", core::NumericLimits<uint32>::max);  // 4294967295
+    println("i32 min: {}", core::NumericLimits<int32>::min);   // -2147483648
+    println("u64 max: {}", core::NumericLimits<uint64>::max);  // 18446744073709551615
+    println("i64 min: {}", core::NumericLimits<int64>::min);   // -9223372036854775808
+    println("f32 eps: {}", core::NumericLimits<f32>::epsilon);
+    println("f64 eps: {}", core::NumericLimits<f64>::epsilon);
+    println("f32 inf: {}", core::NumericLimits<f32>::infinity);
+    println("f64 nan: {}", core::NumericLimits<f64>::nan);
+}
+
 int mallowMain() {
     sint x[3] = {42, 2, 1};
     const sint* const p = nullptr;
@@ -150,6 +148,6 @@ int mallowMain() {
     }
 
     testCondVar();
-
+    numeric_limits_test();
     return 0;
 }

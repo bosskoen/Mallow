@@ -37,7 +37,7 @@ void core::sync::mlwFutexWakeAll(uint32 *ptr) noexcept
         #if defined(MLW_WINDOWS)
     WakeByAddressAll(ptr);
     #elif defined(MLW_LINUX)
-    syscall(SYS_futex, ptr, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr);
+    syscall(SYS_futex, ptr, FUTEX_WAKE_PRIVATE, NumericLimits<uint32>::max, nullptr);
     #elif defined(MLW_MAC)
     os_sync_wake_by_address_all(ptr, sizeof(uint32), OS_SYNC_WAKE_BY_ADDRESS_NONE);
     #endif
