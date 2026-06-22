@@ -31,6 +31,7 @@ namespace core::sync
         friend class core::Optional<Lock<T>>;
 
     public:
+        MLW_FORCE_INLINE bool isHeld() const { return locked;}
         MLW_FORCE_INLINE void unlock()
         {
             if (locked)

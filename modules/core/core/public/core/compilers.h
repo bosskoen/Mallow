@@ -138,3 +138,19 @@ static __forceinline usize mlw_clz64(uint64 x)
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
 
 #endif
+
+#if defined(MLW_DEBUG)
+#if defined(MLW_MSVC)
+ #define MLW_DEBUGBREAK() __debugbreak()
+#elif defined(MLW_X64) || defined(MLW_X86)
+  #define MLW_DEBUGBREAK() __asm__ volatile("int3")
+  #elif defined(MLW_ARM64)
+    #define MLW_DEBUGBREAK() __asm__ volatile("brk #0")
+#elif defined(MLW_ARM32)
+    #define MLW_DEBUGBREAK() __asm__ volatile("bkpt #0")
+#else
+    #define MLW_DEBUGBREAK() __builtin_trap()  // fallback, not a true breakpoint but stops execution
+#endif
+#else
+#define MLW_DEBUGBREAK()
+#endif

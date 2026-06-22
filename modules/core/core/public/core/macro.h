@@ -7,13 +7,13 @@
 #define _MLW_CHECK_ARGS(...) \
     __VA_OPT__(core::remove_ref_t<decltype(__VA_ARGS__)>)
 
-#define mlw_write(buffer, format_str, ...)                                                                             \
-    do                                                                                                             \
-    {                                                                                                              \
-        static_assert(core::detail::checkFormattable<_MLW_CHECK_ARGS(__VA_ARGS__)>(),     \
-                      "write has an unformattable argument");                                                      \
-        static_assert(core::FormatBuffer<decltype(buffer)>, "write has an incompatible buffer");                   \
-        core::detail::format(buffer, core::CStr(format_str), ##__VA_ARGS__);                                       \
+#define mlw_write(buffer, format_str, ...)                                                       \
+    do                                                                                           \
+    {                                                                                            \
+        static_assert(core::detail::checkFormattable<_MLW_CHECK_ARGS(__VA_ARGS__)>(),            \
+                      "write has an unformattable argument");                                    \
+        static_assert(core::FormatBuffer<decltype(buffer)>, "write has an incompatible buffer"); \
+        core::detail::format(buffer, core::CStr(format_str), ##__VA_ARGS__);                     \
     } while (0)
 
 #define _MLW_WRITE_IMPL(handle, newline, format_str, ...)                                                     \
@@ -27,7 +27,7 @@
         {                                                                                                     \
             core::FormatBufferType &buf = core::detail::getFormatBuffer();                                    \
             buf.len = 0;                                                                                      \
-            mlw_write(buf, format_str, ##__VA_ARGS__);                                                            \
+            mlw_write(buf, format_str, ##__VA_ARGS__);                                                        \
             if constexpr (newline)                                                                            \
                 buf.append('\n');                                                                             \
             io::writeHandle(handle, core::CStr(buf.ptr, buf.len));                                            \
@@ -50,6 +50,7 @@
     {                                                   \
         eprintln("panic at {}:{}", __FILE__, __LINE__); \
         eprint(format_str, ##__VA_ARGS__);              \
+        MLW_DEBUGBREAK();                               \
         core::mlwTerminate(1);                          \
     } while (0)
 
@@ -57,7 +58,26 @@
     do                                            \
     {                                             \
         eprint("TODO {}:{}", __FILE__, __LINE__); \
+        MLW_DEBUGBREAK();                         \
         core::mlwExit(1);                         \
+    } while (0)
+
+#define mlw_assert(cond)                       \
+    do                                         \
+    {                                          \
+        if (!(cond))                           \
+        {                                      \
+            panic("assertion failed: " #cond); \
+        }                                      \
+    } while (0)
+    
+#define mlw_assert_msg(cond, format_str, ...)                                 \
+    do                                                                        \
+    {                                                                         \
+        if (!(cond))                                                          \
+        {                                                                     \
+            panic("assertion failed: " #cond "\n" format_str, ##__VA_ARGS__); \
+        }                                                                     \
     } while (0)
 // TODO
 //      document how to use

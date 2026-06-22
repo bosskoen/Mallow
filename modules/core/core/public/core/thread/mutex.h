@@ -22,10 +22,10 @@ namespace core::sync
                 panic("mutex destructed with a lock being held");
             }
         };
-        Mutex(const &Mutex) = delete;
-        Mutex(&&Mutex) = delete;
-        Mutex &operator=(const &Mutex) = delete;
-        Mutex &operator=(&&Mutex) = delete;
+        Mutex(const Mutex&) = delete;
+        Mutex(Mutex&&) = delete;
+        Mutex &operator=(const Mutex&) = delete;
+        Mutex &operator=(Mutex&&) = delete;
 
         void lock();
         void unlock();

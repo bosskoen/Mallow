@@ -137,11 +137,13 @@ namespace core::sync
             }
 
             MCS() = default;
-            ~MCS() {
-    if (tail.load(MemoryOrder::Relaxed) != nullptr) {
-        panic("MCS lock destroyed with active owner or waiters");
-    }
-}
+            ~MCS()
+            {
+                if (tail.load(MemoryOrder::Relaxed) != nullptr)
+                {
+                    panic("MCS lock destroyed with active owner or waiters");
+                }
+            }
             MCS(const MCS &) = delete;
             MCS &operator=(const MCS &) = delete;
             MCS(MCS &&) = delete;
@@ -174,6 +176,8 @@ namespace core::sync
         friend Optional<Lock<spin_lock::MCS>>;
 
     public:
+        MLW_FORCE_INLINE bool isHeld() const { return locked; }
+
         MLW_FORCE_INLINE void unlock()
         {
             if (locked)
@@ -183,11 +187,13 @@ namespace core::sync
             }
         }
 
-        MLW_FORCE_INLINE void relock()[
-            if(locked) return;
+        MLW_FORCE_INLINE void relock()
+        {
+            if (locked)
+                return;
             lock_obj.lock(me);
             locked = true;
-        ]
+        }
         Lock() = delete;
 
         MLW_FORCE_INLINE explicit Lock(spin_lock::MCS &obj) : lock_obj(obj)

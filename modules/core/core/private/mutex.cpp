@@ -62,14 +62,14 @@ void core::sync::Mutex::lock()
         if (futex_obj.exchange(2, MemoryOrder::Acquire) == 0)
             return;
 
-        futexWait(futex_obj.rawPtrUnsafe(), 2);
+        mlwFutexWait(futex_obj.rawPtrUnsafe(), 2);
     }
 }
 
 void core::sync::Mutex::unlock()
 {
     if (futex_obj.exchange(0, MemoryOrder::Release) == 2)
-        futexWakeOne(futex_obj.rawPtrUnsafe());
+        mlwFutexWakeOne(futex_obj.rawPtrUnsafe());
 }
 
 bool core::sync::Mutex::tryLock()

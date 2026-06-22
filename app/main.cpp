@@ -1,7 +1,59 @@
 #include <core/thread/spinlock.h>
 #include <core/thread/mutex.h>
+#include <core/thread/candvar.h>
 
 using namespace core::sync;
+
+
+
+void testCondVar() {
+    // test 1: predicate already true, should not block
+    {
+        Mutex mtx;
+        CondVar cv;
+        Lock lock(mtx);
+        bool called = false;
+        cv.wait(lock, [&]{ called = true; return true; });
+        mlw_assert(called);
+    }
+
+    // test 2: predicate called until true
+    {
+        Mutex mtx;
+        CondVar cv;
+        Lock lock(mtx);
+        int calls = 0;
+        // this would infinite loop if wait doesn't check predicate first
+        cv.wait(lock, [&]{ 
+            calls++;
+            return true;  // true on first call
+        });
+        mlw_assert(calls == 1);
+    }
+
+    // test 3: lock is re-held after wait returns
+    {
+        Mutex mtx;
+        CondVar cv;
+        Lock lock(mtx);
+        cv.wait(lock, []{ return true; });
+        mlw_assert(lock.isHeld());  // if you have this
+    }
+
+    // test 4: wakeOne and wakeAll don't crash on no waiters
+    {
+        CondVar cv;
+        cv.wakeOne();
+        cv.wakeAll();
+    }
+
+    // test 5: destructor safety (debug only)
+    {
+        CondVar cv;
+        // just destructs cleanly with no waiters
+    }
+}
+
 
 struct asdsa{
     bool x = true;
@@ -97,6 +149,7 @@ int mallowMain() {
         println("hell {} {}", asdsa{}, vase);
     }
 
+    testCondVar();
 
     return 0;
 }
