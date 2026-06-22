@@ -5,7 +5,10 @@
 
 namespace core::sync
 {
-
+    void mlwFutexWait(uint32* ptr, uint32 expected) noexcept;
+    void mlwFutexWakeOne(uint32* ptr) noexcept;
+    void mlwFutexWakeAll(uint32* ptr) noexcept;
+    
     template <typename T>
     concept AtomicEligible =
         is_same_v<T, remove_cv_t<T>> &&

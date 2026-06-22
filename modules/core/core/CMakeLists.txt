@@ -36,6 +36,7 @@ target_sources(core
         public/core/compilers.h
         private/mutex.cpp
         public/core/thread/mutex.h
+        public/core/thread/candvar.h
 )
 
 target_include_directories(core

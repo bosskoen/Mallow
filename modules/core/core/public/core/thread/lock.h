@@ -39,6 +39,11 @@ namespace core::sync
                 locked = false;
             }
         }
+        MLW_FORCE_INLINE void relock(){
+            if (locked) return;
+            lock_obj.lock();
+            locked = true;
+        }
         Lock() = delete;
         MLW_FORCE_INLINE explicit Lock(T &obj) : lock_obj(obj)
         {

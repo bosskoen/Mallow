@@ -8,29 +8,39 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #elif defined(MLW_MAC)
-#include <os/ulock.h>
+#include <os/os_sync_wait_on_address.h>
 #endif
 
-MLW_FORCE_INLINE static void futexWait(uint32* ptr, uint32 expected) noexcept
+void core::sync::mlwFutexWait(uint32* ptr, uint32 expected) noexcept
 {
-#if defined(MLW_WINDOWS)
+    #if defined(MLW_WINDOWS)
     WaitOnAddress(ptr, &expected, 4, INFINITE);
-#elif defined(MLW_LINUX)
+    #elif defined(MLW_LINUX)
     syscall(SYS_futex, ptr, FUTEX_WAIT_PRIVATE, expected, nullptr);
-#elif defined(MLW_MAC)
-    __ulock_wait(UL_COMPARE_AND_WAIT, ptr, expected, 0);
-#endif
+    #elif defined(MLW_MAC)
+    os_sync_wait_on_address(ptr, expected, sizeof(uint32), OS_SYNC_WAIT_ON_ADDRESS_NONE);
+    #endif
 }
 
-static void futexWakeOne(uint32* ptr) noexcept
+void core::sync::mlwFutexWakeOne(uint32* ptr) noexcept
 {
-#if defined(MLW_WINDOWS)
+    #if defined(MLW_WINDOWS)
     WakeByAddressSingle(ptr);
-#elif defined(MLW_LINUX)
+    #elif defined(MLW_LINUX)
     syscall(SYS_futex, ptr, FUTEX_WAKE_PRIVATE, 1, nullptr);
-#elif defined(MLW_MAC)
-    __ulock_wake(UL_COMPARE_AND_WAIT, ptr, 0);
-#endif
+    #elif defined(MLW_MAC)
+    os_sync_wake_by_address_any(ptr, sizeof(uint32), OS_SYNC_WAKE_BY_ADDRESS_NONE);
+    #endif
+}
+void core::sync::mlwFutexWakeAll(uint32 *ptr) noexcept
+{
+        #if defined(MLW_WINDOWS)
+    WakeByAddressAll(ptr);
+    #elif defined(MLW_LINUX)
+    syscall(SYS_futex, ptr, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr);
+    #elif defined(MLW_MAC)
+    os_sync_wake_by_address_all(ptr, sizeof(uint32), OS_SYNC_WAKE_BY_ADDRESS_NONE);
+    #endif
 }
 
 void core::sync::Mutex::lock()
