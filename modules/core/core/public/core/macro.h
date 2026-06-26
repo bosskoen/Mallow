@@ -45,6 +45,7 @@
 #define MLW_DEBUG_PRINT(format_str, ...)
 #endif
 
+// make path were you can call write so no format needs to hapen
 #define panic(format_str, ...)                          \
     do                                                  \
     {                                                   \

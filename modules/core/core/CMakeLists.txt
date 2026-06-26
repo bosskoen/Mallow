@@ -37,6 +37,9 @@ target_sources(core
         private/mutex.cpp
         public/core/thread/mutex.h
         public/core/thread/candvar.h
+        public/core/thread/rwlock.h
+        public/core/memory/galloc.h
+        private/galloc.cpp
 )
 
 target_include_directories(core

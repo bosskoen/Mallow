@@ -2,8 +2,6 @@
 #include "macro.h"
 #include "traits.h"
 
-#include <new>
-
 namespace core
 {
 

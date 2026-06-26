@@ -43,9 +43,8 @@ void core::FormatBufferType::realocate()
         VirtualAlloc(new_ptr, capacity + PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
         // memcpy
 
-        MLW_ASSUME_ALIGNED(ptr, 4096);
-        MLW_ASSUME_ALIGNED(new_ptr, 4096);
-        mlwMemcpy(new_ptr, ptr, len);
+
+        mlwMemcpy(MLW_ASSUME_ALIGNED(new_ptr, 4096), MLW_ASSUME_ALIGNED(ptr, 4096), len);
 
         VirtualFree(ptr, 0, MEM_RELEASE);
         ptr = new_ptr;

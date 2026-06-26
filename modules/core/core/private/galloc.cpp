@@ -1,0 +1,372 @@
+#include "memory/galloc.h"
+#include "libc/process.h"
+
+#if defined(MLW_WINDOWS)
+#include <windows.h>
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+#include <sys/mman.h>
+#include "memory.h"
+#endif
+
+thread_local core::ThreadCash thread_cash{};
+static core::GAlloc mlw_galloc{};
+
+static char *fit_aligned(core::Header *block, usize size, usize align)
+{
+	char *payload = reinterpret_cast<char *>(block + 1);
+	char *aligned = reinterpret_cast<char *>(
+		(reinterpret_cast<uintptr_t>(payload) + align - 1) & ~(align - 1));
+	// if aligned == payload we still need room for nothing extra, that is fine
+	// but if aligned is inside the header space we need to bump
+	if (aligned < payload)
+		aligned += align; // should never happen but safety
+
+	usize total_needed = (aligned - reinterpret_cast<char *>(block)) + size;
+	if (total_needed > block->next_off - sizeof(core::Header))
+		return nullptr;
+	return aligned;
+}
+
+void* core::GAlloc::allign_alloc(usize size, usize align)
+{
+	if (align & (align - 1)) return nullptr;
+	if (align < 8) align = 8;
+	size = (size + alignof(Header) - 1) & ~(alignof(Header) - 1);
+
+	if (align == PAGE_SIZE) { TODO(); }// os alloc
+	if (align > 256)        return nullptr;
+
+	// if align != to small size??
+
+	if (size <= MIN_SIZE) { TODO(); }
+	else if (size >= MAX_SIZE) { TODO(); }
+	else
+	{
+		// --- find a region with a free block ---
+		Region* current = thread_cash.medium.active;
+		if (current == nullptr) {
+			if (!alloc_new_medium(current)) return nullptr;
+			current = thread_cash.medium.active;
+		}
+		while (true)
+		{
+			if (current->free_block != nullptr) break;
+
+			if (current->next == nullptr)
+				if (!alloc_new_medium(current)) return nullptr;
+			current = current->next;
+		}
+
+		// --- find a block that fits ---
+		Header* block = current->free_block;
+		char* aligned_payload = nullptr;
+		while ((aligned_payload = fit_aligned(block, size, align)) == nullptr)
+		{
+			if (block->getFreePtr()->next_free_block != nullptr)
+			{
+				block = block->getFreePtr()->next_free_block;
+				continue;
+			}
+
+			do
+			{
+				if (current->next == nullptr)
+					if (!alloc_new_medium(current)) return nullptr;
+				current = current->next;
+				block = current->free_block;
+				if (block != nullptr) break;
+			} while (true);
+		}
+
+		// --- compute all pointers and sizes once ---
+		//][header][padding][new_header][aligned_payload][middle_h][after_padding][next_h]
+
+		Header* new_header = reinterpret_cast<Header*>(aligned_payload) - 1;
+		Header* middle_h = reinterpret_cast<Header*>(aligned_payload + size);
+		Header* next_h = reinterpret_cast<Header*>(reinterpret_cast<char*>(block) + block->next_off);
+		Header* prev_h = block->pre_off != 0
+			? reinterpret_cast<Header*>(reinterpret_cast<char*>(block) - block->pre_off)
+			: nullptr;
+
+		Header* prev_f = block->getFreePtr()->prev_free_block;
+		Header* next_f = block->getFreePtr()->next_free_block;
+
+		usize padding = reinterpret_cast<char*>(new_header) - reinterpret_cast<char*>(block + 1);
+		usize after_padding = reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(middle_h);
+
+		bool keep_front = padding > MIN_SIZE + sizeof(Header);
+		bool keep_back = after_padding > MIN_SIZE + sizeof(Header);
+		bool last_block = reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(current) >= Region::MEDIUM_BLOCK_SIZE;
+
+		// --- case 2: keep back as free block, no front split ---
+		if (!keep_front && keep_back)
+		{
+			// replace block with middle_h in free list
+			if (prev_f) prev_f->getFreePtr()->next_free_block = middle_h;
+			else        current->free_block = middle_h;
+			if (next_f) next_f->getFreePtr()->prev_free_block = middle_h;
+			middle_h->getFreePtr()->prev_free_block = prev_f;
+			middle_h->getFreePtr()->next_free_block = next_f;
+
+			// middle_h offsets
+			usize mid_to_next = reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(middle_h);
+			middle_h->pre_off = reinterpret_cast<char*>(middle_h) - reinterpret_cast<char*>(new_header);
+			middle_h->next_off = mid_to_next;
+			if (!last_block) next_h->pre_off = mid_to_next;
+			middle_h->align = 0;
+
+			// move header to aligned position
+			mlwMemset(block, 0, sizeof(Header));
+			new_header->pre_off = prev_h ? reinterpret_cast<char*>(new_header) - reinterpret_cast<char*>(prev_h) : 0;
+			if (prev_h) prev_h->next_off = new_header->pre_off;
+			new_header->next_off = middle_h->pre_off;
+			new_header->align = align;
+		}
+
+		// --- case 1: give whole block, no split ---
+		else if (!keep_front && !keep_back)
+		{
+			// unlink block from free list
+			if (prev_f) prev_f->getFreePtr()->next_free_block = next_f;
+			else        current->free_block = next_f;
+			if (next_f) next_f->getFreePtr()->prev_free_block = prev_f;
+
+			// move header to aligned position
+			usize new_next_off = reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(new_header);
+			mlwMemset(block, 0, sizeof(Header));
+			new_header->pre_off = prev_h ? reinterpret_cast<char*>(new_header) - reinterpret_cast<char*>(prev_h) : 0;
+			if (prev_h) prev_h->next_off = new_header->pre_off;
+			new_header->next_off = new_next_off;
+			if (!last_block) next_h->pre_off = new_next_off;
+
+			new_header->align = align;
+		}
+		// --- case 4: keep both front and back as free blocks ---
+		else if (keep_front && keep_back)
+		{
+			// block stays in free list as front fragment, middle_h inserted after it
+			usize block_to_new = reinterpret_cast<char*>(new_header) - reinterpret_cast<char*>(block);
+			block->next_off = block_to_new;
+			block->getFreePtr()->next_free_block = middle_h;
+
+			middle_h->getFreePtr()->prev_free_block = block;
+			middle_h->getFreePtr()->next_free_block = next_f;
+			if (next_f) next_f->getFreePtr()->prev_free_block = middle_h;
+
+			usize mid_to_next = reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(middle_h);
+			middle_h->pre_off = reinterpret_cast<char*>(middle_h) - reinterpret_cast<char*>(new_header);
+			middle_h->next_off = mid_to_next;
+			if (!last_block) next_h->pre_off = mid_to_next;
+			middle_h->align = 0;
+
+			new_header->pre_off = block_to_new;
+			new_header->next_off = middle_h->pre_off;
+			new_header->align = align;
+		}
+		// --- case 3: keep front as free block, no back split ---
+		else   /*(keep_front && !keep_back) */
+		{
+			// block stays in free list as the front fragment, shrink it
+			usize block_to_new = reinterpret_cast<char*>(new_header) - reinterpret_cast<char*>(block);
+			block->next_off = block_to_new;
+
+			// new_header offsets
+			usize new_to_next = reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(new_header);
+			new_header->pre_off = block_to_new;
+			new_header->next_off = new_to_next;
+			if (!last_block) next_h->pre_off = new_to_next;
+			new_header->align = align;
+		}
+
+		return reinterpret_cast<void*>(new_header + 1);
+	}
+}
+
+bool core::GAlloc::alloc_new_medium(core::Region* last_region)
+{
+	Region *new_reg;
+#if defined(MLW_WINDOWS)
+	new_reg = static_cast<Region *>(::VirtualAlloc(nullptr, Region::MEDIUM_BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+	if (!new_reg)
+	{
+		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
+		return false;
+	}
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	new_reg = static_cast<Region *>(::mmap(nullptr, Region::MEDIUM_BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	if (new_reg == MAP_FAILED)
+	{
+		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
+		return false;
+	}
+#endif
+	new_reg->next = nullptr;
+	new_reg->remote_free = nullptr;
+	new_reg->used_count = 0;
+    new_reg->owning_id = core::thread_id;
+	new_reg->free_block = reinterpret_cast<Header *>(new_reg + 1);
+
+	new_reg->free_block->align = 0;
+	new_reg->free_block->pre_off = 0;
+	new_reg->free_block->next_off = Region::MEDIUM_BLOCK_SIZE - sizeof(Region) - sizeof(Header);
+	new_reg->free_block->getFreePtr()->next_free_block = nullptr;
+	new_reg->free_block->getFreePtr()->prev_free_block = nullptr;
+
+	if (!last_region)
+	{
+		thread_cash.medium.active = new_reg;
+
+		new_reg->previous = nullptr;
+	}
+	else
+	{
+		last_region->next = new_reg;
+		new_reg->previous = last_region;
+	}
+
+	sync::WriteLock lock{region_list_lock};
+	region_table.insert(RegionTable::Entry{ new_reg, RegionTable::Entry::Type::Medium });
+
+	return true;
+}
+
+core::GAlloc::GAlloc()
+{
+
+}
+
+core::ThreadCash::ThreadCash()
+{
+}
+
+core::GAlloc::RegionTable::RegionTable()
+{
+#if defined(MLW_WINDOWS)
+	base = static_cast<Entry*>(::VirtualAlloc(nullptr, ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
+	if (!base) {
+		panic("failed to reserve region table memory");
+	}
+	void* committed = ::VirtualAlloc(base, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
+	if (!committed) {
+		::VirtualFree(base, 0, MEM_RELEASE);
+		base = nullptr;
+		panic("failed to reserve region table memory");
+
+	}
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	base = static_cast<Entry*>(::mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	if (base == MAP_FAILED) { panic("failed to mmap region table memory"); }
+#endif
+	capacity = PAGE_SIZE;
+}
+
+core::GAlloc::RegionTable::~RegionTable()
+{
+// do need to delete??
+}
+
+core::GAlloc::RegionTable::Entry* core::GAlloc::RegionTable::find(void* ptr) const
+{
+	Entry* aligned_base = reinterpret_cast<Entry*>(MLW_ASSUME_ALIGNED(base, 16));
+
+	index_t lo = 0, hi = size - 1;
+	while (lo <= hi) {
+		index_t mid = lo + (hi - lo) / 2;
+		char* entry_base = reinterpret_cast<char*>(aligned_base[mid].ptr);
+		usize block_size = aligned_base[mid].type == Entry::Type::Medium
+			? Region::MEDIUM_BLOCK_SIZE
+			: Region::SMALL_BLOCK_SIZE;
+
+		if (ptr < entry_base)
+			hi = mid - 1;
+		else if (ptr >= entry_base + block_size)
+			lo = mid + 1;
+		else
+			return &aligned_base[mid];
+	}
+	return nullptr;
+}
+
+void core::GAlloc::RegionTable::remove(Region* ptr)
+{
+	// binary search for exact match
+	// no need to check for size checking for exact match
+	index_t lo = 0, hi = size - 1;
+	while (lo <= hi) {
+		index_t mid = lo + (hi - lo) / 2;
+		if (base[mid].ptr == ptr) {
+			// shift everything from mid+1 onwards left by one
+			for (index_t i = mid; i < size - 1; i++)
+				base[i] = base[i + 1];
+			size--;
+			return;
+		}
+		if (base[mid].ptr < ptr)
+			lo = mid + 1;
+		else
+			hi = mid - 1;
+	}
+	// not found should never happen, could assert here
+	panic("GAlloc::RegionTable::remove: removed a pointer that was not in the list");
+}
+
+bool core::GAlloc::RegionTable::insert(Entry&& e)
+{
+	if (size == capacity)
+		if (!grow()) return false;
+
+	// binary search for insertion point
+	// no need to check for size no way they over lap
+	index_t lo = 0, hi = size;
+	while (lo < hi) {
+		index_t mid = lo + (hi - lo) / 2;
+		if (base[mid].ptr < e.ptr)
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+	// lo is now the insertion index
+	// shift everything from lo onwards right by one
+	for (index_t i = size; i > lo; i--)
+		base[i] = base[i - 1];
+	base[lo] = e;
+	size++;
+	return true;
+}
+
+bool core::GAlloc::RegionTable::grow()
+{
+#if defined(MLW_WINDOWS)
+	if ((capacity * sizeof(Entry) & GRAN_MASK) == 0)
+	{
+		// at granularity boundary, need new reservation
+		usize new_reserve = ((capacity * sizeof(Entry) >> GRAN_SHIFT) + 1) * ALLOC_GRANULARITY;
+		Entry* new_ptr = static_cast<Entry*>(::VirtualAlloc(nullptr, new_reserve, MEM_RESERVE, PAGE_READWRITE));
+		if (!new_ptr) return false;
+		if (!::VirtualAlloc(new_ptr, capacity * sizeof(Entry) + PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE)) {
+			::VirtualFree(new_ptr, 0, MEM_RELEASE);
+			return false;
+		}
+		MLW_ASSUME_ALIGNED(base, 4096);
+		MLW_ASSUME_ALIGNED(new_ptr, 4096);
+		mlwMemcpy(new_ptr, base, size * sizeof(Entry));
+		::VirtualFree(base, 0, MEM_RELEASE);
+		base = new_ptr;
+	}
+	else
+	{
+		// within reservation, just commit another page
+		if (!::VirtualAlloc(reinterpret_cast<char*>(base) + capacity * sizeof(Entry), PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+			return false;
+	}
+	capacity += PAGE_SIZE / sizeof(Entry);
+	return true;
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	Entry* new_ptr = static_cast<Entry*>(::mremap(base, capacity * sizeof(Entry), capacity * sizeof(Entry) + PAGE_SIZE, MREMAP_MAYMOVE));
+	if (new_ptr == MAP_FAILED) return false;
+	MLW_ASSUME_ALIGNED(new_ptr, 4096);
+	base = new_ptr;
+	capacity += PAGE_SIZE / sizeof(Entry);
+	return true;
+#endif
+}

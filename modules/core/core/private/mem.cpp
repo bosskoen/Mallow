@@ -1,4 +1,5 @@
 #include "libc/mem.h"
+#include "libc/process.h"
 #if defined(MLW_WINDOWS)
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
@@ -8,6 +9,10 @@
 #endif
 
 #include "libc/math.h"
+#include "thread/atomic.h"
+
+static core::sync::Atomic<uint32> thread_id_counter{0};
+const thread_local uint32 core::thread_id = thread_id_counter.fetchAdd(1, core::sync::MemoryOrder::Relaxed);
 
 namespace {
     struct PlatformInfo {

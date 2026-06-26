@@ -7,6 +7,8 @@ namespace {
 }
 
 namespace core{
+    const extern thread_local uint32 thread_id;
+
     MLW_NO_RETURN MLW_FORCE_INLINE void mlwExit(int32 status)
     {
         ::exit(status);
