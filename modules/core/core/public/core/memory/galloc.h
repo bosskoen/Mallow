@@ -5,11 +5,11 @@ namespace core
 {
     struct Region;
 
-    extern thread_local struct ThreadCash{
+    extern thread_local struct ThreadCache{
         struct SizeClass{
             Region* active = nullptr;
 			sync::Atomic<bool> has_remove_free{ false };
-			uint32 free_slabes = 0;
+			uint32 free_slabs = 0;
 			
         };
         SizeClass small_8{};
@@ -19,13 +19,13 @@ namespace core
         SizeClass small_128{};
         SizeClass medium{};
 
-        explicit ThreadCash();
-		~ThreadCash();
-		ThreadCash(ThreadCash&&) =delete;
-		ThreadCash& operator = (ThreadCash&&) =delete;
+        explicit ThreadCache() = default;
+		~ThreadCache(); //TODO deconstruction order/responsebilety
+		ThreadCache(ThreadCache&&) =delete;
+		ThreadCache& operator = (ThreadCache&&) =delete;
 
-		ThreadCash(const ThreadCash&) = delete;
-		ThreadCash& operator = (const ThreadCash&) = delete;
+		ThreadCache(const ThreadCache&) = delete;
+		ThreadCache& operator = (const ThreadCache&) = delete;
     } thread_cash;
 
     struct FreePointer;
@@ -45,8 +45,7 @@ namespace core
         Header* free_block = nullptr;
 		uint32 used_count;
 		sync::Atomic<void*> remote_free; //pointer to the next block that need to be freed
-		ThreadCash* owning_cash;
-		//maby lock
+		ThreadCache* owning_cache;
         static constexpr usize MEDIUM_BLOCK_SIZE = 1 << 22;//4.194.304
         static constexpr usize SMALL_BLOCK_SIZE = 1 << 16;//65.536
     };
@@ -68,11 +67,36 @@ namespace core
 			RegionTable();
 			~RegionTable();
 
+
+            RegionTable(const RegionTable&) = delete;
+            RegionTable& operator=(const RegionTable&) = delete;
+
+            RegionTable(RegionTable&& o) noexcept
+                : base(o.base), capacity(o.capacity), size(o.size)
+            {
+                o.base = nullptr;
+                o.capacity = 0;
+                o.size = 0;
+            }
+            RegionTable& operator=(RegionTable&& o) noexcept
+            {
+                if (this != &o) {
+                    // free our current allocation before taking o's
+                    this->~RegionTable();
+                    base = o.base;
+                    capacity = o.capacity;
+                    size = o.size;
+                    o.base = nullptr;
+                    o.capacity = 0;
+                    o.size = 0;
+                }
+                return *this;
+            }
+
 			Entry* find(void* ptr) const;
 			void remove(Region*);
 			bool insert(Entry&&);
 			bool grow();
-			//what move/copy semantics
 
 		} region_table{} ;
 
@@ -82,58 +106,29 @@ namespace core
 		static constexpr usize MAX_SIZE = 1 << 18; //262.144
 
 
-		bool allocNewMedium(core::Region* last_region, core::ThreadCash& cash);
-		void deallocMedium(core::Region* region);
-		bool freeMediumBlock(void* ptr, core::Region*);
-		bool alloc_new_small(core::Region* last_region, core::ThreadCash& cash);
+		bool allocMediumRegion(core::Region* last_region, core::ThreadCache& cache);
+		void freeMediumRegion(core::Region* region);
+		bool freeMedium(void* ptr, core::Region*);
+		bool allocSmallRegion(core::Region* last_region, core::ThreadCache& cache);
 
-		void emptyRemoteList(ThreadCash&);
-		friend struct ThreadCash;
+		void drainRemoteList(ThreadCache&);
+		friend struct ThreadCache;
 	public:
 
 		explicit GAlloc();
 		~GAlloc();
 		GAlloc(GAlloc&&) =delete;
-		GAlloc& operator = (GAlloc&&) =delete; //can this be with a lock in the struct;
+		GAlloc& operator = (GAlloc&&) =delete;
 
 		GAlloc(const GAlloc&) = delete;
 		GAlloc& operator = (const GAlloc&) = delete;
 
-		void* allign_alloc(usize size, usize align); /*
-		{
-		switch on block size
-			to big to os
-			to small find block alloc lock and call free
-			just write:
-			get first region and in that regeion get first free block
-			if that blocks next block pointer 0 && the end of the region is far enoth || next block is > size
-				lock region
-				split block if nesesary but not if the left over is smaller than a constent
-				return pointer
-			else
-			goto just write or if the next region is nullptr alloc a new region
-		}*/
-		void* alloc(usize size); /*
-		{
-			return allign_alloc(size, some allignment)
-		}*/
-		void free(void* ptr);/*
-		{
-			switch were does the pointer live
-			if small lock call free
-			if big free
-			is medeum
-				find region lock it free block if it can be combide combid with other blocks else make now block and link corectly in list
-				if foll region is empty maby dealoc region
-				check for first block if needs to be moved back
-		}
-		*/
+		void* alignAlloc(usize size, usize align);
+		void* alloc(usize size); 
+		void free(void* ptr);
 
-		void* realloc(void* ptr, usize new_size);/*
-		{
-		 extent or realoc
-		}*/
-	}mlw_galloc;
+		void* realloc(void* ptr, usize new_size);
+	}mlw_g_alloc;
 } // namespace core
 
 
