@@ -11,17 +11,17 @@
 thread_local core::ThreadCash thread_cash{};
 static core::GAlloc mlw_galloc{};
 
-static char *fit_aligned(core::Header *block, usize size, usize align)
+static char* fit_aligned(core::Header* block, usize size, usize align)
 {
-	char *payload = reinterpret_cast<char *>(block + 1);
-	char *aligned = reinterpret_cast<char *>(
+	char* payload = reinterpret_cast<char*>(block + 1);
+	char* aligned = reinterpret_cast<char*>(
 		(reinterpret_cast<uintptr_t>(payload) + align - 1) & ~(align - 1));
 	// if aligned == payload we still need room for nothing extra, that is fine
 	// but if aligned is inside the header space we need to bump
 	if (aligned < payload)
 		aligned += align; // should never happen but safety
 
-	usize total_needed = (aligned - reinterpret_cast<char *>(block)) + size;
+	usize total_needed = (aligned - reinterpret_cast<char*>(block)) + size;
 	if (total_needed > block->next_off - sizeof(core::Header))
 		return nullptr;
 	return aligned;
@@ -36,24 +36,25 @@ void* core::GAlloc::allign_alloc(usize size, usize align)
 	if (align == PAGE_SIZE) { TODO(); }// os alloc
 	if (align > 256)        return nullptr;
 
-	// if align != to small size??
+	// if align > small size??
 
 	if (size <= MIN_SIZE) { TODO(); }
 	else if (size >= MAX_SIZE) { TODO(); }
 	else
 	{
 		// --- find a region with a free block ---
-		Region* current = thread_cash.medium.active;
+		core::ThreadCash& cash = thread_cash;
+		Region* current = cash.medium.active;
 		if (current == nullptr) {
-			if (!alloc_new_medium(current)) return nullptr;
-			current = thread_cash.medium.active;
+			if (!allocNewMedium(current, cash)) return nullptr;
+			current = cash.medium.active;
 		}
 		while (true)
 		{
 			if (current->free_block != nullptr) break;
 
 			if (current->next == nullptr)
-				if (!alloc_new_medium(current)) return nullptr;
+				if (!allocNewMedium(current, cash)) return nullptr;
 			current = current->next;
 		}
 
@@ -71,7 +72,7 @@ void* core::GAlloc::allign_alloc(usize size, usize align)
 			do
 			{
 				if (current->next == nullptr)
-					if (!alloc_new_medium(current)) return nullptr;
+					if (!allocNewMedium(current, cash)) return nullptr;
 				current = current->next;
 				block = current->free_block;
 				if (block != nullptr) break;
@@ -177,23 +178,23 @@ void* core::GAlloc::allign_alloc(usize size, usize align)
 			if (!last_block) next_h->pre_off = new_to_next;
 			new_header->align = align;
 		}
-
+		++current->used_count;
 		return reinterpret_cast<void*>(new_header + 1);
 	}
 }
 
-bool core::GAlloc::alloc_new_medium(core::Region* last_region)
+bool core::GAlloc::allocNewMedium(core::Region* last_region, core::ThreadCash& cash)
 {
-	Region *new_reg;
+	Region* new_reg;
 #if defined(MLW_WINDOWS)
-	new_reg = static_cast<Region *>(::VirtualAlloc(nullptr, Region::MEDIUM_BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+	new_reg = static_cast<Region*>(::VirtualAlloc(nullptr, Region::MEDIUM_BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
 	if (!new_reg)
 	{
 		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
 		return false;
 	}
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	new_reg = static_cast<Region *>(::mmap(nullptr, Region::MEDIUM_BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	new_reg = static_cast<Region*>(::mmap(nullptr, Region::MEDIUM_BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
 	if (new_reg == MAP_FAILED)
 	{
 		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
@@ -203,8 +204,8 @@ bool core::GAlloc::alloc_new_medium(core::Region* last_region)
 	new_reg->next = nullptr;
 	new_reg->remote_free = nullptr;
 	new_reg->used_count = 0;
-    new_reg->owning_id = core::thread_id;
-	new_reg->free_block = reinterpret_cast<Header *>(new_reg + 1);
+	new_reg->owning_cash = &cash;
+	new_reg->free_block = reinterpret_cast<Header*>(new_reg + 1);
 
 	new_reg->free_block->align = 0;
 	new_reg->free_block->pre_off = 0;
@@ -214,7 +215,7 @@ bool core::GAlloc::alloc_new_medium(core::Region* last_region)
 
 	if (!last_region)
 	{
-		thread_cash.medium.active = new_reg;
+		cash.medium.active = new_reg;
 
 		new_reg->previous = nullptr;
 	}
@@ -224,10 +225,220 @@ bool core::GAlloc::alloc_new_medium(core::Region* last_region)
 		new_reg->previous = last_region;
 	}
 
-	sync::WriteLock lock{region_list_lock};
+	sync::WriteLock lock{ region_list_lock };
 	region_table.insert(RegionTable::Entry{ new_reg, RegionTable::Entry::Type::Medium });
 
 	return true;
+}
+
+void core::GAlloc::deallocMedium(core::Region* region)
+{
+	Region* next = region->next;
+	Region* prev = region->previous;
+	ThreadCash* cash = region->owning_cash;
+	if (next) {
+		next->previous = prev;
+	}
+	if (prev) {
+		prev->next = next;
+	}
+	else {
+		cash->medium.active = next;
+	}
+	{
+		sync::WriteLock lock{ region_list_lock };
+		region_table.remove(region);
+	}
+#if defined(MLW_WINDOWS)
+	::VirtualFree(region, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	::munmap(region, Region::MEDIUM_BLOCK_SIZE);
+#endif
+}
+
+bool core::GAlloc::freeMediumBlock(void* ptr, core::Region* region)
+{
+	Header* header = static_cast<Header*>(ptr) - 1;
+	Header* next_header = reinterpret_cast<Header*>(reinterpret_cast<char*>(header) + header->next_off);
+	bool last_block = reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(region) >= Region::MEDIUM_BLOCK_SIZE;
+
+	Header* prev_header = header->pre_off != 0
+		? reinterpret_cast<Header*>(reinterpret_cast<char*>(header) - header->pre_off)
+		: nullptr;
+
+	bool have_new_free_ptrs = false;
+
+	//could zero out old headers
+	if (header->pre_off != 0 && prev_header->align != 0) {
+		have_new_free_ptrs = true;
+		header = prev_header;
+		header->next_off = reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(header);
+		if (!last_block) {
+			next_header->pre_off = header->next_off;
+		}
+	}
+	else if (header->pre_off == 0 && reinterpret_cast<Header*>(region + 1) != header) {
+		Header* new_header = reinterpret_cast<Header*>(region + 1);
+		new_header->pre_off = 0;
+		new_header->next_off = reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(new_header);
+		if (!last_block) {
+			next_header->pre_off = new_header->next_off;
+		}
+		header = new_header;
+
+	}
+	
+	if ((last_block || next_header->align != 0) && !have_new_free_ptrs) {
+		header->getFreePtr()->next_free_block = region->free_block;
+		header->getFreePtr()->prev_free_block = nullptr;
+		if (region->free_block) {
+			header->getFreePtr()->next_free_block->getFreePtr()->prev_free_block = header;
+		}
+		region->free_block = header;
+	}
+	else if (!last_block) {
+		Header* next_next_header = reinterpret_cast<Header*>(reinterpret_cast<char*>(next_header) + next_header->next_off);
+		bool next_last_block = reinterpret_cast<char*>(next_next_header) - reinterpret_cast<char*>(region) >= Region::MEDIUM_BLOCK_SIZE;
+		header->next_off = reinterpret_cast<char*>(next_next_header) - reinterpret_cast<char*>(header);
+		if (!next_last_block) {
+			next_next_header->pre_off = header->next_off;
+		}
+
+		if (have_new_free_ptrs) {
+			//remove form list
+			Header* next_p = next_header->getFreePtr()->next_free_block;
+			Header* prv_p = next_header->getFreePtr()->prev_free_block;
+			if (prv_p) {
+				prv_p->getFreePtr()->next_free_block = next_p;
+			}
+			else {
+				region->free_block = next_p;
+			}
+			if (next_p) {
+				next_p->getFreePtr()->prev_free_block = prv_p;
+			}
+		}
+		else {
+			//use old posision but replace
+			Header* next_p = next_header->getFreePtr()->next_free_block;
+			Header* prv_p = next_header->getFreePtr()->prev_free_block;
+			if (prv_p) {
+				prv_p->getFreePtr()->next_free_block = header;
+			}
+			else {
+				region->free_block = header;
+			}
+			if (next_p) {
+				next_p->getFreePtr()->prev_free_block = header;
+			}
+		}
+	}
+
+
+	header->align = 0;
+	ThreadCash* cash = region->owning_cash;
+	--region->used_count;
+	if (region->used_count == 0) ++cash->medium.free_slabes;
+	if (cash->medium.free_slabes >= 2) {
+		deallocMedium(region);
+		--cash->medium.free_slabes;
+		return true;
+	}
+	return false;
+}
+
+void core::GAlloc::emptyRemoteList(ThreadCash& cash)
+{
+	if (cash.small_8.has_remove_free) {}
+	if (cash.small_16.has_remove_free) {}
+	if (cash.small_32.has_remove_free) {}
+	if (cash.small_64.has_remove_free) {}
+	if (cash.small_128.has_remove_free) {}
+	if (cash.medium.has_remove_free) {
+		cash.medium.has_remove_free.store(false, sync::MemoryOrder::Relaxed);
+		Region* current = cash.medium.active;
+		while (current) {
+			Region* next = current->next; //region can be deleted
+			void* block = current->remote_free.exchange(nullptr, sync::MemoryOrder::AcqRel);
+			while (block) {
+				bool region_deleted = freeMediumBlock(block, current);
+				if (region_deleted) break;
+				block = *static_cast<void**>(block);
+				//do dealloc but stupid void pointer senenegens again break if free returned true
+			}
+			current = next;
+		}
+	}
+}
+
+void core::GAlloc::free(void* ptr) {
+	if (ptr == nullptr) return;
+	ThreadCash& cash = thread_cash;
+
+	//TODO check own free queu
+	RegionTable::Entry entry;
+	bool os_region;
+	{
+		sync::ReadLock l{ region_list_lock };
+		RegionTable::Entry* e = region_table.find(ptr);
+		if (e == nullptr) {
+			os_region = true;
+		}
+		else {
+			os_region = false;
+			entry = *e;
+		}
+	}
+	if (os_region) {
+		TODO();
+		return;
+	}
+
+	if (entry.ptr->owning_cash == &cash) {
+		if (entry.type == RegionTable::Entry::Type::Medium) {
+			freeMediumBlock(ptr, entry.ptr);
+		}
+		else {
+			TODO();
+		}
+	}
+	else {
+
+		void** next_slot = static_cast<void**>(ptr);
+
+		void* expected = entry.ptr->remote_free.load(sync::MemoryOrder::Acquire);
+		do {
+			*next_slot = expected;
+		} while (!entry.ptr->remote_free.compareExchangeWeak(
+			expected,           // updated on failure with current value
+			ptr,                // new head = this block
+			sync::MemoryOrder::Release,
+			sync::MemoryOrder::Acquire
+		));
+		switch (entry.type)
+		{
+		case RegionTable::Entry::Type::Medium:
+			entry.ptr->owning_cash->medium.has_remove_free.store(true, sync::MemoryOrder::Release);
+			break;
+		case RegionTable::Entry::Type::S8:
+			entry.ptr->owning_cash->small_8.has_remove_free.store(true, sync::MemoryOrder::Release);
+			break;
+		case RegionTable::Entry::Type::S16:
+			entry.ptr->owning_cash->small_16.has_remove_free.store(true, sync::MemoryOrder::Release);
+			break;
+		case RegionTable::Entry::Type::S32:
+			entry.ptr->owning_cash->small_32.has_remove_free.store(true, sync::MemoryOrder::Release);
+			break;
+		case RegionTable::Entry::Type::S64:
+			entry.ptr->owning_cash->small_64.has_remove_free.store(true, sync::MemoryOrder::Release);
+			break;
+		case RegionTable::Entry::Type::S128:
+			entry.ptr->owning_cash->small_128.has_remove_free.store(true, sync::MemoryOrder::Release);
+			break;
+		default:
+			break;
+		}
+	}
 }
 
 core::GAlloc::GAlloc()
@@ -262,7 +473,11 @@ core::GAlloc::RegionTable::RegionTable()
 
 core::GAlloc::RegionTable::~RegionTable()
 {
-// do need to delete??
+#if defined(MLW_WINDOWS)
+	::VirtualFree(base, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	::munmap(base, capacity * sizeof(Entry));
+#endif
 }
 
 core::GAlloc::RegionTable::Entry* core::GAlloc::RegionTable::find(void* ptr) const

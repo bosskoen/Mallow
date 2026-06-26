@@ -8,7 +8,9 @@ namespace core
     extern thread_local struct ThreadCash{
         struct SizeClass{
             Region* active = nullptr;
-            uint32 free_slabes = 0;
+			sync::Atomic<bool> has_remove_free{ false };
+			uint32 free_slabes = 0;
+			
         };
         SizeClass small_8{};
         SizeClass small_16{};
@@ -43,7 +45,7 @@ namespace core
         Header* free_block = nullptr;
 		uint32 used_count;
 		sync::Atomic<void*> remote_free; //pointer to the next block that need to be freed
-        uint32 owning_id;
+		ThreadCash* owning_cash;
 		//maby lock
         static constexpr usize MEDIUM_BLOCK_SIZE = 1 << 22;//4.194.304
         static constexpr usize SMALL_BLOCK_SIZE = 1 << 16;//65.536
@@ -59,6 +61,7 @@ namespace core
 				enum class Type: uint8 { Medium, S8, S16,S32,S64,S128} type;
 				uint8 pad[7]{}; //16 bytes total
 				MLW_FORCE_INLINE Entry(Region* p, Type t) : ptr(p), type(t) {};
+				MLW_FORCE_INLINE Entry() = default;
 			}*base = nullptr;
 			index_t capacity = 0;
 			index_t size = 0;
@@ -79,9 +82,12 @@ namespace core
 		static constexpr usize MAX_SIZE = 1 << 18; //262.144
 
 
-		bool alloc_new_medium(core::Region* last_region);
-		bool alloc_new_small(core::Region* last_region);
+		bool allocNewMedium(core::Region* last_region, core::ThreadCash& cash);
+		void deallocMedium(core::Region* region);
+		bool freeMediumBlock(void* ptr, core::Region*);
+		bool alloc_new_small(core::Region* last_region, core::ThreadCash& cash);
 
+		void emptyRemoteList(ThreadCash&);
 		friend struct ThreadCash;
 	public:
 
