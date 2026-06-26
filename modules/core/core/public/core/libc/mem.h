@@ -1,21 +1,11 @@
 #pragma once
 #include "../compilers.h"
+#include <cstdlib>
 
 namespace
 {
     extern "C" void *memcpy(void *__restrict dst, const void *__restrict src, usize n);
     extern "C" void *memset(void *dst, int value, usize n);
-
-    extern "C" void *malloc(usize size);
-    extern "C" void free(void *ptr);
-    extern "C" void *realloc(void *ptr, usize size);
-
-#if defined(MLW_WINDOWS)
-    extern "C" void *_aligned_malloc(usize size, usize alignment);
-    extern "C" void _aligned_free(void *ptr);
-#else
-    extern "C" void *aligned_alloc(usize alignment, usize size);
-#endif
 
 }
 

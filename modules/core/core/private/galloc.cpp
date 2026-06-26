@@ -468,7 +468,7 @@ core::GAlloc::RegionTable::RegionTable()
 	base = static_cast<Entry*>(::mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
 	if (base == MAP_FAILED) { panic("failed to mmap region table memory"); }
 #endif
-	capacity = PAGE_SIZE;
+	capacity = static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
 }
 
 core::GAlloc::RegionTable::~RegionTable()
@@ -574,14 +574,14 @@ bool core::GAlloc::RegionTable::grow()
 		if (!::VirtualAlloc(reinterpret_cast<char*>(base) + capacity * sizeof(Entry), PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
 			return false;
 	}
-	capacity += PAGE_SIZE / sizeof(Entry);
+	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
 	return true;
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
 	Entry* new_ptr = static_cast<Entry*>(::mremap(base, capacity * sizeof(Entry), capacity * sizeof(Entry) + PAGE_SIZE, MREMAP_MAYMOVE));
 	if (new_ptr == MAP_FAILED) return false;
 	MLW_ASSUME_ALIGNED(new_ptr, 4096);
 	base = new_ptr;
-	capacity += PAGE_SIZE / sizeof(Entry);
+	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
 	return true;
 #endif
 }

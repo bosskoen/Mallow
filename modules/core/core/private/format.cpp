@@ -25,7 +25,7 @@ namespace core::detail
 
             MLW_ASSUME_ALIGNED(b.ptr, 4096);
             b.len = 0;
-            b.capacity = PAGE_SIZE;
+            b.capacity = static_cast<index_t>(PAGE_SIZE);
             return b;
         }();
         return buf;
@@ -48,16 +48,16 @@ void core::FormatBufferType::realocate()
 
         VirtualFree(ptr, 0, MEM_RELEASE);
         ptr = new_ptr;
-        capacity += PAGE_SIZE;
+        capacity += static_cast<index_t>(PAGE_SIZE);
     }
     else
     {
         VirtualAlloc(ptr + capacity, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
-        capacity += PAGE_SIZE;
+        capacity += static_cast<index_t>(PAGE_SIZE);
     }
 #else
     ptr = static_cast<char *>(mremap(ptr, capacity, capacity + PAGE_SIZE, MREMAP_MAYMOVE));
            MLW_ASSUME_ALIGNED(ptr, 4096);
-    capacity += PAGE_SIZE;
+    capacity += static_cast<index_t>(PAGE_SIZE);
 #endif
 }

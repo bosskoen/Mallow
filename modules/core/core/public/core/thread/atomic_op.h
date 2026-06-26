@@ -227,7 +227,7 @@ namespace core::sync
 
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize)) 
-    MLW_FORCE_INLINE T mlwFetchAdd(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
+    MLW_FORCE_INLINE T mlwFetchAdd(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
         if constexpr (sizeof(T) == 1)
@@ -337,7 +337,7 @@ namespace core::sync
 
     template <typename T>
         requires(sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
-    MLW_FORCE_INLINE T mlwExchange(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
+    MLW_FORCE_INLINE T mlwExchange(T *ptr, T value, [[maybe_unused]]  MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
         if constexpr (sizeof(T) == 1)
@@ -423,7 +423,7 @@ namespace core::sync
 
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
-    MLW_FORCE_INLINE T mlwFetchAnd(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
+    MLW_FORCE_INLINE T mlwFetchAnd(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
         if constexpr (sizeof(T) == 1)
@@ -512,7 +512,7 @@ namespace core::sync
 
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize)) 
-    MLW_FORCE_INLINE T mlwFetchOr(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
+    MLW_FORCE_INLINE T mlwFetchOr(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
         if constexpr (sizeof(T) == 1)
@@ -601,7 +601,7 @@ namespace core::sync
 
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
-    MLW_FORCE_INLINE T mlwFetchXor(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
+    MLW_FORCE_INLINE T mlwFetchXor(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
         if constexpr (sizeof(T) == 1)
@@ -690,7 +690,7 @@ namespace core::sync
 
     template <typename T>
         requires(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8) && (sizeof(T) <= sizeof(usize))
-    MLW_FORCE_INLINE bool mlwCasStrong(T *ptr, T &expected, T desired, MemoryOrder success, MemoryOrder fail)
+    MLW_FORCE_INLINE bool mlwCasStrong(T *ptr, T &expected, T desired, [[maybe_unused]] MemoryOrder success, MemoryOrder fail)
     {
 #if defined(MLW_MSVC)
         if constexpr (sizeof(T) == 1)

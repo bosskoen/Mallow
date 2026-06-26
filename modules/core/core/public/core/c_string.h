@@ -26,7 +26,7 @@ namespace core
 
         MLW_FORCE_INLINE static CStr fromPtr(const char *ptr)
         {
-            return CStr(ptr, mlwStrlen(ptr));
+            return CStr(ptr, static_cast<index_t>(mlwStrlen(ptr)));
         }
     };
 } // namespace core::

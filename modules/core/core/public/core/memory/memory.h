@@ -69,7 +69,7 @@ namespace core
 		{
 			if (ptr <= base)
 				offset = 0;
-			else if (reinterpret_cast<uint8*>(ptr) - reinterpret_cast<uint8*>(base) < offset)
+			else if (static_cast<usize>(reinterpret_cast<uint8*>(ptr) - reinterpret_cast<uint8*>(base)) < offset)
 				offset = reinterpret_cast<uint8*>(ptr) - reinterpret_cast<uint8*>(base);
 		}; // rewind to pointer (must be previously returned by alloc)
 		MLW_FORCE_INLINE void reset() { offset = 0; }; // rewind to 0

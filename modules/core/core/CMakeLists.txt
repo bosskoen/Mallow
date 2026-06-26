@@ -7,6 +7,8 @@ if(WIN32)
     target_link_libraries(core PRIVATE synchronization)
 endif()
 
+mlw_set_warnings(core LEVEL W4)
+
 target_sources(core
     PRIVATE
         public/core/io/terminal.h

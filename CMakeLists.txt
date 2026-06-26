@@ -9,6 +9,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/definitions.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/definitions.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/warnings.cmake)
+
+mlw_set_default_warnings(W3)
 
 # Remove CMake's default exception handling flags
 string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")

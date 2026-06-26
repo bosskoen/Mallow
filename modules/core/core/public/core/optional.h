@@ -37,8 +37,8 @@ namespace core
     class Optional
     {
     private:
-        bool has_value = false;
         alignas(T) char storage[sizeof(T)];
+        bool has_value = false;
 
         T *ptr() { return reinterpret_cast<T *>(&storage); }
         const T *ptr() const { return reinterpret_cast<const T *>(&storage); }
