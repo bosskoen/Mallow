@@ -71,7 +71,7 @@
             panic("assertion failed: " #cond); \
         }                                      \
     } while (0)
-    
+
 #define mlw_assert_msg(cond, format_str, ...)                                 \
     do                                                                        \
     {                                                                         \
@@ -80,6 +80,20 @@
             panic("assertion failed: " #cond "\n" format_str, ##__VA_ARGS__); \
         }                                                                     \
     } while (0)
+
+#ifdef MLW_DEBUG            
+#define mlw_debug_assert_msg(cond, format_str, ...)                           \
+    do                                                                        \
+    {                                                                         \
+        if (!(cond))                                                          \
+        {                                                                     \
+            panic("assertion failed: " #cond "\n" format_str, ##__VA_ARGS__); \
+        }                                                                     \
+    } while (0)
+#else
+#define mlw_debug_assert_msg(cond, format_str, ...)
+#endif // MLW_DEBUG
+
 // TODO
 //      document how to use
 //      make more test

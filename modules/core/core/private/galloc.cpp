@@ -1,5 +1,4 @@
 #include "memory/galloc.h"
-#include "libc/process.h"
 
 #if defined(MLW_WINDOWS)
 #include <windows.h>
@@ -36,11 +35,75 @@ void* core::GAlloc::alignAlloc(usize size, usize align)
 	if (align == PAGE_SIZE) { TODO(); }// os alloc
 	if (align > 256)        return nullptr;
 
-	core::ThreadCache& cache = thread_cash;
+	core::ThreadCache& cache = thread_cache;
 	drainRemoteList(cache);
-	// TODO if align > small size??
+	if (size < align) { size = align; }
 
-	if (size <= MIN_SIZE) { TODO(); }
+	if (size <= MIN_SIZE) {
+		RegionTable::Entry::Type block_type;
+		usize block_size;
+		if (size <= 8) { block_size = 8;   block_type = RegionTable::Entry::Type::S8; }
+		else if (size <= 16) { block_size = 16;  block_type = RegionTable::Entry::Type::S16; }
+		else if (size <= 32) { block_size = 32;  block_type = RegionTable::Entry::Type::S32; }
+		else if (size <= 64) { block_size = 64;  block_type = RegionTable::Entry::Type::S64; }
+		else { block_size = 128; block_type = RegionTable::Entry::Type::S128; }
+
+		Region* current;
+		switch (block_type)
+		{
+		case core::GAlloc::RegionTable::Entry::Type::S8:
+			current = cache.small_8.active;
+			if (current == nullptr) {
+				if (!allocSmallRegion(nullptr, cache, block_type)) return nullptr;
+				current = cache.small_8.active;
+			}
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S16:
+			current = cache.small_16.active;
+			if (current == nullptr) {
+				if (!allocSmallRegion(nullptr, cache, block_type)) return nullptr;
+				current = cache.small_16.active;
+			}
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S32:
+			current = cache.small_32.active;
+			if (current == nullptr) {
+				if (!allocSmallRegion(nullptr, cache, block_type)) return nullptr;
+				current = cache.small_32.active;
+			}
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S64:
+			current = cache.small_64.active;
+			if (current == nullptr) {
+				if (!allocSmallRegion(nullptr, cache, block_type)) return nullptr;
+				current = cache.small_64.active;
+			}
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S128:
+			current = cache.small_128.active;
+			if (current == nullptr) {
+				if (!allocSmallRegion(nullptr, cache, block_type)) return nullptr;
+				current = cache.small_128.active;
+			}
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::Medium:
+		default:
+			MLW_DEBUG_PRINT("medium block in small block path");
+			return nullptr;
+			break;
+		}
+
+		while (current->free_block == nullptr) {
+			if (current->next == nullptr) 
+				if (!allocSmallRegion(current, cache, block_type)) return nullptr;
+			current = current->next;
+		}
+
+		void* block = reinterpret_cast<void*>(current->free_block);
+		current->free_block = *reinterpret_cast<Header**>(block);
+		++current->used_count;
+		return block;
+	}
 	else if (size >= MAX_SIZE) { TODO(); }
 	else
 	{
@@ -348,13 +411,219 @@ bool core::GAlloc::freeMedium(void* ptr, core::Region* region)
 	return false;
 }
 
+void core::GAlloc::freeSmall(void* ptr, core::Region* region, RegionTable::Entry::Type size)
+{
+	*reinterpret_cast<void**>(ptr) = reinterpret_cast<void*>(region->free_block);
+	region->free_block = reinterpret_cast<Header*>(ptr);
+
+	ThreadCache* cache = region->owning_cache;
+	--region->used_count;
+	switch (size)
+	{
+	case core::GAlloc::RegionTable::Entry::Type::S8:
+		if (region->used_count == 0) ++cache->small_8.free_slabs;
+		if (cache->small_8.free_slabs >= 2) {
+			freeSmallRegion(region, size);
+			--cache->small_8.free_slabs;
+		}
+		break;
+	case core::GAlloc::RegionTable::Entry::Type::S16:
+		if (region->used_count == 0) ++cache->small_16.free_slabs;
+		if (cache->small_16.free_slabs >= 2) {
+			freeSmallRegion(region, size);
+			--cache->small_16.free_slabs;
+
+		}
+		break;
+	case core::GAlloc::RegionTable::Entry::Type::S32:
+		if (region->used_count == 0) ++cache->small_32.free_slabs;
+		if (cache->small_32.free_slabs >= 2) {
+			freeSmallRegion(region, size);
+			--cache->small_32.free_slabs;
+
+		}
+		break;
+	case core::GAlloc::RegionTable::Entry::Type::S64:
+		if (region->used_count == 0) ++cache->small_64.free_slabs;
+		if (cache->small_64.free_slabs >= 2) {
+			freeSmallRegion(region, size);
+			--cache->small_64.free_slabs;
+
+		}
+		break;
+	case core::GAlloc::RegionTable::Entry::Type::S128:
+		if (region->used_count == 0) ++cache->small_128.free_slabs;
+		if (cache->small_128.free_slabs >= 2) {
+			freeSmallRegion(region, size);
+			--cache->small_128.free_slabs;
+
+		}
+		break;
+	case core::GAlloc::RegionTable::Entry::Type::Medium:
+	default:
+		break;
+	}
+
+}
+
+void core::GAlloc::freeSmallRegion(core::Region* region, RegionTable::Entry::Type size)
+{
+	Region* next = region->next;
+	Region* prev = region->previous;
+	ThreadCache* cache = region->owning_cache;
+	if (next) {
+		next->previous = prev;
+	}
+	if (prev) {
+		prev->next = next;
+	}
+	else {
+		switch (size)
+		{
+		case core::GAlloc::RegionTable::Entry::Type::S8:
+			cache->small_8.active = next;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S16:
+			cache->small_16.active = next;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S32:
+			cache->small_32.active = next;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S64:
+			cache->small_64.active = next;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S128:
+			cache->small_128.active = next;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::Medium:
+		default:
+			break;
+		}
+		
+	}
+	{
+		sync::WriteLock lock{ region_list_lock };
+		region_table.remove(region);
+	}
+#if defined(MLW_WINDOWS)
+	::VirtualFree(region, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	::munmap(region, Region::SMALL_BLOCK_SIZE);
+#endif
+}
+
+bool core::GAlloc::allocSmallRegion(core::Region* last_region, core::ThreadCache& cache, RegionTable::Entry::Type size)
+{
+	Region* new_reg;
+	mlw_debug_assert_msg(size != RegionTable::Entry::Type::Medium, "core::GAlloc::allocSmallRegion tryed to alloc a medium region");
+
+#if defined(MLW_WINDOWS)
+	new_reg = static_cast<Region*>(::VirtualAlloc(nullptr, Region::SMALL_BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+	if (!new_reg)
+	{
+		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
+		return false;
+	}
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	new_reg = static_cast<Region*>(::mmap(nullptr, Region::SMALL_BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	if (new_reg == MAP_FAILED)
+	{
+		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
+		return false;
+	}
+#endif
+
+	usize block_size = static_cast<usize>(size);
+
+	new_reg->next = nullptr;
+	new_reg->remote_free = nullptr;
+	new_reg->used_count = 0;
+	new_reg->owning_cache = &cache;
+
+	new_reg->free_block = reinterpret_cast<Header*>((reinterpret_cast<uptr>(new_reg + 1) + block_size - 1) & ~(block_size - 1)); // this is not a header pointer bit a void pointer becous of reuse of the reagion struct
+
+	char* current = reinterpret_cast<char*>(new_reg->free_block);
+	char* end = reinterpret_cast<char*>(new_reg) + Region::SMALL_BLOCK_SIZE;
+	while (current + block_size < end) {
+		char* next = current + block_size;
+		*reinterpret_cast<void**>(current) = next;
+		current = next;
+	}
+	*reinterpret_cast<void**>(current) = nullptr;
+
+	if (!last_region)
+	{
+		switch (size)
+		{
+		case core::GAlloc::RegionTable::Entry::Type::Medium: //sould never hapen
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S8:
+			cache.small_8.active = new_reg;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S16:
+			cache.small_16.active = new_reg;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S32:
+			cache.small_32.active = new_reg;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S64:
+			cache.small_64.active = new_reg;
+			break;
+		case core::GAlloc::RegionTable::Entry::Type::S128:
+			cache.small_128.active = new_reg;
+			break;
+		default:
+			break;
+		}
+		
+		new_reg->previous = nullptr;
+	}
+	else
+	{
+		last_region->next = new_reg;
+		new_reg->previous = last_region;
+	}
+
+	sync::WriteLock lock{ region_list_lock };
+	region_table.insert(RegionTable::Entry{ new_reg, size });
+
+	return true;
+}
+
 void core::GAlloc::drainRemoteList(ThreadCache& cache)
 {
-	if (cache.small_8.has_remove_free) { TODO(); }
-	if (cache.small_16.has_remove_free) { TODO(); }
-	if (cache.small_32.has_remove_free) { TODO(); }
-	if (cache.small_64.has_remove_free) { TODO(); }
-	if (cache.small_128.has_remove_free) { TODO(); }
+	auto drainSmall = [&](ThreadCache::SizeClass& sc, RegionTable::Entry::Type type) {
+		if (!sc.has_remove_free) return;
+		sc.has_remove_free.store(false, sync::MemoryOrder::Relaxed);
+		Region* current = sc.active;
+		while (current) {
+			Region* next = current->next;
+			void* head = current->remote_free.exchange(nullptr, sync::MemoryOrder::AcqRel);
+			if (head) {
+				usize count = 1;
+				void* tail = head;
+				while (*reinterpret_cast<void**>(tail)) {
+					tail = *reinterpret_cast<void**>(tail);
+					++count;
+				}
+				*reinterpret_cast<void**>(tail) = reinterpret_cast<void*>(current->free_block);
+				current->free_block = reinterpret_cast<Header*>(head);
+				current->used_count -= static_cast<uint32>(count);
+				if (current->used_count == 0) ++sc.free_slabs;
+				if (sc.free_slabs >= 2) {
+					freeSmallRegion(current, type);
+					--sc.free_slabs;
+				}
+			}
+			current = next;
+		}
+		};
+
+	drainSmall(cache.small_8, RegionTable::Entry::Type::S8);
+	drainSmall(cache.small_16, RegionTable::Entry::Type::S16);
+	drainSmall(cache.small_32, RegionTable::Entry::Type::S32);
+	drainSmall(cache.small_64, RegionTable::Entry::Type::S64);
+	drainSmall(cache.small_128, RegionTable::Entry::Type::S128);
 	if (cache.medium.has_remove_free) {
 		cache.medium.has_remove_free.store(false, sync::MemoryOrder::Relaxed);
 		Region* current = cache.medium.active;
@@ -362,10 +631,10 @@ void core::GAlloc::drainRemoteList(ThreadCache& cache)
 			Region* next = current->next; //region can be deleted
 			void* block = current->remote_free.exchange(nullptr, sync::MemoryOrder::AcqRel);
 			while (block) {
-				void* next = *static_cast<void**>(block);
+				void* next_block = *static_cast<void**>(block);
 				bool region_deleted = freeMedium(block, current);
 				if (region_deleted) break;
-				block = next;
+				block = next_block;
 			}
 			current = next;
 		}
@@ -401,7 +670,7 @@ void core::GAlloc::free(void* ptr) {
 			freeMedium(ptr, entry.ptr);
 		}
 		else {
-			TODO();
+			freeSmall(ptr, entry.ptr, entry.type);
 		}
 	}
 	else {
@@ -470,6 +739,11 @@ core::GAlloc::RegionTable::RegionTable()
 }
 
 core::GAlloc::RegionTable::~RegionTable()
+{
+	distroy();
+}
+
+void core::GAlloc::RegionTable::distroy()
 {
 #if defined(MLW_WINDOWS)
 	::VirtualFree(base, 0, MEM_RELEASE);

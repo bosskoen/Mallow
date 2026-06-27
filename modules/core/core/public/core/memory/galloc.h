@@ -26,7 +26,7 @@ namespace core
 
 		ThreadCache(const ThreadCache&) = delete;
 		ThreadCache& operator = (const ThreadCache&) = delete;
-    } thread_cash;
+    } thread_cache;
 
     struct FreePointer;
     struct Header {
@@ -57,7 +57,7 @@ namespace core
 			struct Entry {
 				Region* ptr;
 				// > 128 ,8 ,16, 64, 128 bytes
-				enum class Type: uint8 { Medium, S8, S16,S32,S64,S128} type;
+				enum class Type: uint8 { Medium, S8 = 8, S16 = 16,S32  = 32 ,S64 = 64,S128= 128} type;
 				uint8 pad[7]{}; //16 bytes total
 				MLW_FORCE_INLINE Entry(Region* p, Type t) : ptr(p), type(t) {};
 				MLW_FORCE_INLINE Entry() = default;
@@ -82,7 +82,7 @@ namespace core
             {
                 if (this != &o) {
                     // free our current allocation before taking o's
-                    this->~RegionTable();
+                    distroy();
                     base = o.base;
                     capacity = o.capacity;
                     size = o.size;
@@ -93,6 +93,7 @@ namespace core
                 return *this;
             }
 
+            void distroy();
 			Entry* find(void* ptr) const;
 			void remove(Region*);
 			bool insert(Entry&&);
@@ -109,7 +110,9 @@ namespace core
 		bool allocMediumRegion(core::Region* last_region, core::ThreadCache& cache);
 		void freeMediumRegion(core::Region* region);
 		bool freeMedium(void* ptr, core::Region*);
-		bool allocSmallRegion(core::Region* last_region, core::ThreadCache& cache);
+        void freeSmall(void* ptr, core::Region*, RegionTable::Entry::Type size);
+        void freeSmallRegion(core::Region*, RegionTable::Entry::Type size);
+		bool allocSmallRegion(core::Region* last_region, core::ThreadCache& cache, RegionTable::Entry::Type);
 
 		void drainRemoteList(ThreadCache&);
 		friend struct ThreadCache;
