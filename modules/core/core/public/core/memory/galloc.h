@@ -3,30 +3,101 @@
 
 namespace core
 {
-    struct Region;
+	struct Region;
+	struct RegionTable {
+		struct Entry {
+			Region* ptr;
+			// > 128 ,8 ,16, 64, 128 bytes
+			enum class Type : uint8 { Medium, S8 = 8, S16 = 16, S32 = 32, S64 = 64, S128 = 128 } type;
+			uint8 pad[7]{}; //16 bytes total
+			MLW_FORCE_INLINE Entry(Region* p, Type t) : ptr(p), type(t) {};
+			MLW_FORCE_INLINE Entry() = default;
+		}*base = nullptr;
+		index_t capacity = 0;
+		index_t size = 0;
+		RegionTable();
+		~RegionTable();
 
-    extern thread_local struct ThreadCache{
-        struct SizeClass{
-            Region* active = nullptr;
+
+		RegionTable(const RegionTable&) = delete;
+		RegionTable& operator=(const RegionTable&) = delete;
+
+		RegionTable(RegionTable&& o) noexcept
+			: base(o.base), capacity(o.capacity), size(o.size)
+		{
+			o.base = nullptr;
+			o.capacity = 0;
+			o.size = 0;
+		}
+		RegionTable& operator=(RegionTable&& o) noexcept
+		{
+			if (this != &o) {
+				// free our current allocation before taking o's
+				distroy();
+				base = o.base;
+				capacity = o.capacity;
+				size = o.size;
+				o.base = nullptr;
+				o.capacity = 0;
+				o.size = 0;
+			}
+			return *this;
+		}
+
+		void distroy();
+		Entry* find(void* ptr) const;
+		void remove(Region*);
+		bool insert(Entry&&);
+		bool grow();
+
+	};
+
+	extern thread_local struct ThreadCache {
+		struct SizeClass {
+			Region* active = nullptr;
 			sync::Atomic<bool> has_remove_free{ false };
 			uint32 free_slabs = 0;
-			
-        };
-        SizeClass small_8{};
-        SizeClass small_16{};
-        SizeClass small_32{};
-        SizeClass small_64{};
-        SizeClass small_128{};
-        SizeClass medium{};
 
-        explicit ThreadCache() = default;
+		};
+		SizeClass small_8{};
+		SizeClass small_16{};
+		SizeClass small_32{};
+		SizeClass small_64{};
+		SizeClass small_128{};
+		SizeClass medium{};
+		explicit ThreadCache() = default;
 		~ThreadCache(); //TODO deconstruction order/responsebilety
-		ThreadCache(ThreadCache&&) =delete;
-		ThreadCache& operator = (ThreadCache&&) =delete;
+		ThreadCache(ThreadCache&&) = delete;
+		ThreadCache& operator = (ThreadCache&&) = delete;
+
+		MLW_FORCE_INLINE SizeClass& getSizeClass(RegionTable::Entry::Type size) {
+			switch (size)
+			{
+			case core::RegionTable::Entry::Type::S8:
+				return small_8;
+				break;
+			case core::RegionTable::Entry::Type::S16:
+				return small_16;
+				break;
+			case core::RegionTable::Entry::Type::S32:
+				return small_32;
+				break;
+			case core::RegionTable::Entry::Type::S64:
+				return small_64;
+				break;
+			case core::RegionTable::Entry::Type::S128:
+				return small_128;
+				break;
+			case core::RegionTable::Entry::Type::Medium:
+				return medium;
+				break;
+			}
+			return medium;
+		}
 
 		ThreadCache(const ThreadCache&) = delete;
 		ThreadCache& operator = (const ThreadCache&) = delete;
-    } thread_cache;
+	} thread_cache;
 
     struct FreePointer;
     struct Header {
@@ -43,9 +114,11 @@ namespace core
         Region* previous = nullptr;
         Region* next = nullptr;
         Header* free_block = nullptr;
-		uint32 used_count;
 		sync::Atomic<void*> remote_free; //pointer to the next block that need to be freed
 		ThreadCache* owning_cache;
+        sync::RWLock migration_lock{};
+		uint32 used_count;
+        uint32 padding;
         static constexpr usize MEDIUM_BLOCK_SIZE = 1 << 22;//4.194.304
         static constexpr usize SMALL_BLOCK_SIZE = 1 << 16;//65.536
     };
@@ -53,53 +126,7 @@ namespace core
     extern class GAlloc {
 	public:
 	private:
-		struct RegionTable {
-			struct Entry {
-				Region* ptr;
-				// > 128 ,8 ,16, 64, 128 bytes
-				enum class Type: uint8 { Medium, S8 = 8, S16 = 16,S32  = 32 ,S64 = 64,S128= 128} type;
-				uint8 pad[7]{}; //16 bytes total
-				MLW_FORCE_INLINE Entry(Region* p, Type t) : ptr(p), type(t) {};
-				MLW_FORCE_INLINE Entry() = default;
-			}*base = nullptr;
-			index_t capacity = 0;
-			index_t size = 0;
-			RegionTable();
-			~RegionTable();
-
-
-            RegionTable(const RegionTable&) = delete;
-            RegionTable& operator=(const RegionTable&) = delete;
-
-            RegionTable(RegionTable&& o) noexcept
-                : base(o.base), capacity(o.capacity), size(o.size)
-            {
-                o.base = nullptr;
-                o.capacity = 0;
-                o.size = 0;
-            }
-            RegionTable& operator=(RegionTable&& o) noexcept
-            {
-                if (this != &o) {
-                    // free our current allocation before taking o's
-                    distroy();
-                    base = o.base;
-                    capacity = o.capacity;
-                    size = o.size;
-                    o.base = nullptr;
-                    o.capacity = 0;
-                    o.size = 0;
-                }
-                return *this;
-            }
-
-            void distroy();
-			Entry* find(void* ptr) const;
-			void remove(Region*);
-			bool insert(Entry&&);
-			bool grow();
-
-		} region_table{} ;
+		RegionTable region_table{} ;
 
 		sync::RWLock region_list_lock{};
 
@@ -116,10 +143,15 @@ namespace core
 
 		void drainRemoteList(ThreadCache&);
 		friend struct ThreadCache;
+
+        ThreadCache orphan_pool{};
+        sync::spin_lock::MCS orphan_lock{};
+		bool orphan_is_draining = false;
+
 	public:
 
-		explicit GAlloc();
-		~GAlloc();
+		explicit GAlloc() = default;
+		~GAlloc() = default;
 		GAlloc(GAlloc&&) =delete;
 		GAlloc& operator = (GAlloc&&) =delete;
 
@@ -132,6 +164,8 @@ namespace core
 
 		void* realloc(void* ptr, usize new_size);
 	}mlw_g_alloc;
+
+  
 } // namespace core
 
 
