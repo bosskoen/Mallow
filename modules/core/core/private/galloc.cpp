@@ -42,12 +42,11 @@ void* core::GAlloc::alignAlloc(usize size, usize align)
 
 	if (size <= MIN_SIZE) {
 		RegionTable::Entry::Type block_type;
-		usize block_size;
-		if (size <= 8) { block_size = 8;   block_type = RegionTable::Entry::Type::S8; }
-		else if (size <= 16) { block_size = 16;  block_type = RegionTable::Entry::Type::S16; }
-		else if (size <= 32) { block_size = 32;  block_type = RegionTable::Entry::Type::S32; }
-		else if (size <= 64) { block_size = 64;  block_type = RegionTable::Entry::Type::S64; }
-		else { block_size = 128; block_type = RegionTable::Entry::Type::S128; }
+		if (size <= 8) {  block_type = RegionTable::Entry::Type::S8; }
+		else if (size <= 16) {   block_type = RegionTable::Entry::Type::S16; }
+		else if (size <= 32) {   block_type = RegionTable::Entry::Type::S32; }
+		else if (size <= 64) {   block_type = RegionTable::Entry::Type::S64; }
+		else {  block_type = RegionTable::Entry::Type::S128; }
 
 
 		Region* current;
