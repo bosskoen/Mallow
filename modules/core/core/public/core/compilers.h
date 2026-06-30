@@ -12,7 +12,7 @@
 #if defined(MLW_MSVC)
 #define MLW_ASSUME_ALIGNED(ptr, alignment) ((__assume((reinterpret_cast<usize>(ptr) & ((alignment) - 1)) == 0)), (ptr))
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
-#define MLW_ASSUME_ALIGNED(ptr, alignment) __builtin_assume_aligned(ptr, alignment)
+#define MLW_ASSUME_ALIGNED(ptr, alignment) reinterpret_cast<decltype(ptr)>(__builtin_assume_aligned(ptr, alignment))
 
 #endif
 
