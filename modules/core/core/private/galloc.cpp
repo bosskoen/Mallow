@@ -33,7 +33,7 @@ void* core::GAlloc::alignAlloc(usize size, usize align)
 	if (align < 8) align = 8;
 	size = (size + alignof(Header) - 1) & ~(alignof(Header) - 1);
 
-	if (align == PAGE_SIZE) { TODO(); }// os alloc
+	if (align == PAGE_SIZE) { return osAlloc(size); }// os alloc
 	if (align > 256)        return nullptr;
 
 	core::ThreadCache& cache = thread_cache;
@@ -42,11 +42,11 @@ void* core::GAlloc::alignAlloc(usize size, usize align)
 
 	if (size <= MIN_SIZE) {
 		RegionTable::Entry::Type block_type;
-		if (size <= 8) {  block_type = RegionTable::Entry::Type::S8; }
-		else if (size <= 16) {   block_type = RegionTable::Entry::Type::S16; }
-		else if (size <= 32) {   block_type = RegionTable::Entry::Type::S32; }
-		else if (size <= 64) {   block_type = RegionTable::Entry::Type::S64; }
-		else {  block_type = RegionTable::Entry::Type::S128; }
+		if (size <= 8) { block_type = RegionTable::Entry::Type::S8; }
+		else if (size <= 16) { block_type = RegionTable::Entry::Type::S16; }
+		else if (size <= 32) { block_type = RegionTable::Entry::Type::S32; }
+		else if (size <= 64) { block_type = RegionTable::Entry::Type::S64; }
+		else { block_type = RegionTable::Entry::Type::S128; }
 
 
 		Region* current;
@@ -58,7 +58,7 @@ void* core::GAlloc::alignAlloc(usize size, usize align)
 		}
 
 		while (current->free_block == nullptr) {
-			if (current->next == nullptr) 
+			if (current->next == nullptr)
 				if (!allocSmallRegion(current, cache, block_type)) return nullptr;
 			current = current->next;
 		}
@@ -68,11 +68,11 @@ void* core::GAlloc::alignAlloc(usize size, usize align)
 		++current->used_count;
 		return block;
 	}
-	else if (size >= MAX_SIZE) { TODO(); }
+	else if (size >= MAX_SIZE) { return osAlloc(size); }
 	else
 	{
 		// --- find a region with a free block ---
-	
+
 		Region* current = cache.medium.active;
 		if (current == nullptr) {
 			if (!allocMediumRegion(current, cache)) return nullptr;
@@ -351,7 +351,7 @@ bool core::GAlloc::freeMedium(void* ptr, core::Region* region)
 		header = new_header;
 
 	}
-	
+
 	if ((last_block || next_header->align != 0) && !have_new_free_ptrs) {
 		header->getFreePtr()->next_free_block = region->free_block;
 		header->getFreePtr()->prev_free_block = nullptr;
@@ -488,7 +488,7 @@ bool core::GAlloc::allocSmallRegion(core::Region* last_region, core::ThreadCache
 			}
 			return true; // no mmap needed
 		}
-		
+
 	}
 
 	Region* new_reg;
@@ -541,6 +541,51 @@ bool core::GAlloc::allocSmallRegion(core::Region* last_region, core::ThreadCache
 	region_table.insert(RegionTable::Entry{ new_reg, size });
 
 	return true;
+}
+
+void* core::GAlloc::osAlloc(usize size)
+{
+	size = (size + PAGE_MASK) & ~(PAGE_MASK);
+#if defined(MLW_WINDOWS)
+	void* ptr = ::VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (!ptr) return nullptr;
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	void* ptr = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	if (ptr == MAP_FAILED) return nullptr;
+#endif
+
+	sync::Lock l{ os_lock };
+	if (!os_table.insert(OSTable::Entry{ ptr, size })) {
+		l.unlock();
+#if defined(MLW_WINDOWS)
+		::VirtualFree(ptr, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+		::munmap(ptr, alloc_size);
+#endif
+		return nullptr;
+	}
+	return ptr;
+}
+
+void core::GAlloc::osFree(void* ptr)
+{
+
+	sync::Lock l{ os_lock };
+
+	Optional<OSTable::Entry> e = os_table.findAndRemove(ptr);
+	l.unlock();
+	if (e.isNone()) {
+		MLW_DEBUG_PRINT("tryed freeing a os poiter taht doesnt exsist");
+		return;
+	}
+
+
+#if defined(MLW_WINDOWS)
+	::VirtualFree(e->ptr, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	::munmap(e->ptr, e->size);
+#endif
+
 }
 
 void core::GAlloc::drainRemoteList(ThreadCache& cache)
@@ -614,7 +659,7 @@ void core::GAlloc::free(void* ptr) {
 		}
 	}
 	if (os_region) {
-		TODO();
+		osFree(ptr);
 		return;
 	}
 
@@ -670,6 +715,11 @@ void core::GAlloc::free(void* ptr) {
 	}
 }
 
+void* core::GAlloc::realloc(void* ptr, usize new_size)
+{
+	TODO();
+}
+
 
 core::RegionTable::RegionTable()
 {
@@ -697,6 +747,32 @@ core::RegionTable::~RegionTable()
 	distroy();
 }
 
+core::OSTable::OSTable()
+{
+#if defined(MLW_WINDOWS)
+	base = static_cast<Entry*>(::VirtualAlloc(nullptr, ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
+	if (!base) {
+		panic("failed to reserve region table memory");
+	}
+	void* committed = ::VirtualAlloc(base, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
+	if (!committed) {
+		::VirtualFree(base, 0, MEM_RELEASE);
+		base = nullptr;
+		panic("failed to reserve region table memory");
+
+	}
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	base = static_cast<Entry*>(::mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	if (base == MAP_FAILED) { panic("failed to mmap region table memory"); }
+#endif
+	capacity = static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+}
+
+core::OSTable::~OSTable()
+{
+	distroy();
+}
+
 void core::RegionTable::distroy()
 {
 #if defined(MLW_WINDOWS)
@@ -705,6 +781,16 @@ void core::RegionTable::distroy()
 	::munmap(base, capacity * sizeof(Entry));
 #endif
 }
+
+void core::OSTable::distroy()
+{
+#if defined(MLW_WINDOWS)
+	::VirtualFree(base, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	::munmap(base, capacity * sizeof(Entry));
+#endif
+}
+
 
 core::RegionTable::Entry* core::RegionTable::find(void* ptr) const
 {
@@ -728,21 +814,46 @@ core::RegionTable::Entry* core::RegionTable::find(void* ptr) const
 	return nullptr;
 }
 
+core::Optional<core::OSTable::Entry> core::OSTable::findAndRemove(void* ptr)
+{
+	Entry* aligned_base = reinterpret_cast<Entry*>(MLW_ASSUME_ALIGNED(base, 16));
+
+	index_t lo = 0, hi = size - 1;
+	while (lo <= hi) {
+		index_t mid = lo + (hi - lo) / 2;
+		char* base_ptr = static_cast<char*>(aligned_base[mid].ptr);
+		if (ptr < base_ptr)
+			hi = mid - 1;
+		else if (ptr >= base_ptr + aligned_base[mid].size)
+			lo = mid + 1;
+		else {
+			Entry ent = aligned_base[mid];
+			for (index_t i = mid; i < size - 1; i++) {
+				aligned_base[i] = aligned_base[i + 1];
+			}
+			size--;
+			return core::Optional<Entry>{ ent };
+		}
+	}
+	return nullptr;
+}
+
 void core::RegionTable::remove(Region* ptr)
 {
+	Entry* a_base = MLW_ASSUME_ALIGNED(base, 16);
 	// binary search for exact match
 	// no need to check for size checking for exact match
 	index_t lo = 0, hi = size - 1;
 	while (lo <= hi) {
 		index_t mid = lo + (hi - lo) / 2;
-		if (base[mid].ptr == ptr) {
+		if (a_base[mid].ptr == ptr) {
 			// shift everything from mid+1 onwards left by one
 			for (index_t i = mid; i < size - 1; i++)
-				base[i] = base[i + 1];
+				a_base[i] = a_base[i + 1];
 			size--;
 			return;
 		}
-		if (base[mid].ptr < ptr)
+		if (a_base[mid].ptr < ptr)
 			lo = mid + 1;
 		else
 			hi = mid - 1;
@@ -751,7 +862,32 @@ void core::RegionTable::remove(Region* ptr)
 	panic("GAlloc::RegionTable::remove: removed a pointer that was not in the list");
 }
 
+
 bool core::RegionTable::insert(Entry&& e)
+{
+	if (size == capacity)
+		if (!grow()) return false;
+
+	// binary search for insertion point
+	// no need to check for size no way they over lap
+	index_t lo = 0, hi = size;
+	while (lo < hi) {
+		index_t mid = lo + (hi - lo) / 2;
+		if (base[mid].ptr < e.ptr)
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+	// lo is now the insertion index
+	// shift everything from lo onwards right by one
+	for (index_t i = size; i > lo; i--)
+		base[i] = base[i - 1];
+	base[lo] = e;
+	size++;
+	return true;
+}
+
+bool core::OSTable::insert(Entry&& e)
 {
 	if (size == capacity)
 		if (!grow()) return false;
@@ -789,7 +925,7 @@ bool core::RegionTable::grow()
 			return false;
 		}
 		base = MLW_ASSUME_ALIGNED(base, 4096);
-		new_ptr =MLW_ASSUME_ALIGNED(new_ptr, 4096);
+		new_ptr = MLW_ASSUME_ALIGNED(new_ptr, 4096);
 		mlwMemcpy(new_ptr, base, size * sizeof(Entry));
 		::VirtualFree(base, 0, MEM_RELEASE);
 		base = new_ptr;
@@ -811,6 +947,44 @@ bool core::RegionTable::grow()
 	return true;
 #endif
 }
+
+bool core::OSTable::grow()
+{
+#if defined(MLW_WINDOWS)
+	if ((capacity * sizeof(Entry) & GRAN_MASK) == 0)
+	{
+		// at granularity boundary, need new reservation
+		usize new_reserve = ((capacity * sizeof(Entry) >> GRAN_SHIFT) + 1) * ALLOC_GRANULARITY;
+		Entry* new_ptr = static_cast<Entry*>(::VirtualAlloc(nullptr, new_reserve, MEM_RESERVE, PAGE_READWRITE));
+		if (!new_ptr) return false;
+		if (!::VirtualAlloc(new_ptr, capacity * sizeof(Entry) + PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE)) {
+			::VirtualFree(new_ptr, 0, MEM_RELEASE);
+			return false;
+		}
+		base = MLW_ASSUME_ALIGNED(base, 4096);
+		new_ptr = MLW_ASSUME_ALIGNED(new_ptr, 4096);
+		mlwMemcpy(new_ptr, base, size * sizeof(Entry));
+		::VirtualFree(base, 0, MEM_RELEASE);
+		base = new_ptr;
+	}
+	else
+	{
+		// within reservation, just commit another page
+		if (!::VirtualAlloc(reinterpret_cast<char*>(base) + capacity * sizeof(Entry), PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+			return false;
+	}
+	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+	return true;
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+	Entry* new_ptr = static_cast<Entry*>(::mremap(base, capacity * sizeof(Entry), capacity * sizeof(Entry) + PAGE_SIZE, MREMAP_MAYMOVE));
+	if (new_ptr == MAP_FAILED) return false;
+	new_ptr = MLW_ASSUME_ALIGNED(new_ptr, 4096);
+	base = new_ptr;
+	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+	return true;
+#endif
+}
+
 
 core::ThreadCache::~ThreadCache()
 {

@@ -52,6 +52,52 @@ namespace core
 
 	};
 
+	struct OSTable {
+		struct Entry {
+			void* ptr;
+			usize size;
+			MLW_FORCE_INLINE Entry(void* p, usize t) : ptr(p), size(t) {};
+			MLW_FORCE_INLINE Entry() = default;
+		}*base = nullptr;
+		index_t capacity = 0;
+		index_t size = 0;
+		OSTable();
+		~OSTable();
+
+
+		OSTable(const OSTable&) = delete;
+		OSTable& operator=(const OSTable&) = delete;
+
+		OSTable(OSTable&& o) noexcept
+			: base(o.base), capacity(o.capacity), size(o.size)
+		{
+			o.base = nullptr;
+			o.capacity = 0;
+			o.size = 0;
+		}
+		OSTable& operator=(OSTable&& o) noexcept
+		{
+			if (this != &o) {
+				// free our current allocation before taking o's
+				distroy();
+				base = o.base;
+				capacity = o.capacity;
+				size = o.size;
+				o.base = nullptr;
+				o.capacity = 0;
+				o.size = 0;
+			}
+			return *this;
+		}
+
+		void distroy();
+		Optional<Entry> findAndRemove(void* ptr);
+		//void remove(void*);
+		bool insert(Entry&&);
+		bool grow();
+
+	};
+
 	extern thread_local struct ThreadCache {
 		struct SizeClass {
 			Region* active = nullptr;
@@ -140,6 +186,8 @@ namespace core
         void freeSmall(void* ptr, core::Region*, RegionTable::Entry::Type size);
         void freeSmallRegion(core::Region*, RegionTable::Entry::Type size);
 		bool allocSmallRegion(core::Region* last_region, core::ThreadCache& cache, RegionTable::Entry::Type);
+		void* osAlloc(usize size);
+		void osFree(void* ptr);
 
 		void drainRemoteList(ThreadCache&);
 		friend struct ThreadCache;
@@ -147,6 +195,9 @@ namespace core
         ThreadCache orphan_pool{};
         sync::spin_lock::MCS orphan_lock{};
 		sync::Atomic<bool> orphan_is_draining{ false };
+
+		OSTable os_table{};
+		sync::spin_lock::MCS os_lock{};
 
 	public:
 
