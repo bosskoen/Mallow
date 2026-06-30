@@ -31,8 +31,11 @@ using sint = int32;
 
 // i128 / u128 — only where natively supported
 #if (defined(MLW_GCC) || defined(MLW_CLANG)) && (defined(MLW_X64) || defined(MLW_ARM64))
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
     using int128 = __int128;
     using uint128 = unsigned __int128;
+#pragma GCC diagnostic pop
 #else
     // MLW_NO_I128 lets user code check availability
     #define MLW_NO_I128

@@ -146,7 +146,7 @@ namespace core
 
         ThreadCache orphan_pool{};
         sync::spin_lock::MCS orphan_lock{};
-		bool orphan_is_draining = false;
+		sync::Atomic<bool> orphan_is_draining{ false };
 
 	public:
 

@@ -10,13 +10,11 @@
 thread_local core::ThreadCache thread_cache{};
 core::GAlloc mlw_g_alloc{};
 
-static bool alloc_alive = false;
-
 static char* fit_aligned(core::Header* block, usize size, usize align)
 {
 	char* payload = reinterpret_cast<char*>(block + 1);
 	char* aligned = reinterpret_cast<char*>(
-		(reinterpret_cast<uintptr_t>(payload) + align - 1) & ~(align - 1));
+		(reinterpret_cast<uptr>(payload) + align - 1) & ~(align - 1));
 
 	// if aligned is inside the header space we need to bump
 	if (aligned < payload)
@@ -129,7 +127,7 @@ void* core::GAlloc::alignAlloc(usize size, usize align)
 
 		bool keep_front = padding > MIN_SIZE + sizeof(Header);
 		bool keep_back = after_padding > MIN_SIZE + sizeof(Header);
-		bool last_block = reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(current) >= Region::MEDIUM_BLOCK_SIZE;
+		bool last_block = static_cast<usize>(reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(current)) >= Region::MEDIUM_BLOCK_SIZE;
 
 		// --- case 1: keep back as free block, no front split ---
 		if (!keep_front && keep_back)
@@ -293,11 +291,11 @@ bool core::GAlloc::allocMediumRegion(core::Region* last_region, core::ThreadCach
 
 void core::GAlloc::freeMediumRegion(core::Region* region)
 {
-	if (!orphan_is_draining) {
+	if (!orphan_is_draining.load(sync::MemoryOrder::Relaxed)) {
 		sync::Lock l{ orphan_lock };
-		orphan_is_draining = true;
+		orphan_is_draining.store(true, sync::MemoryOrder::Relaxed);
 		drainRemoteList(orphan_pool);
-		orphan_is_draining = false;
+		orphan_is_draining.store(false, sync::MemoryOrder::Relaxed);
 	}
 
 	Region* next = region->next;
@@ -328,7 +326,7 @@ bool core::GAlloc::freeMedium(void* ptr, core::Region* region)
 	Header* header = static_cast<Header*>(ptr) - 1;
 	mlw_debug_assert_msg(header->align != 0, "freed a free block");
 	Header* next_header = reinterpret_cast<Header*>(reinterpret_cast<char*>(header) + header->next_off);
-	bool last_block = reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(region) >= Region::MEDIUM_BLOCK_SIZE;
+	bool last_block = static_cast<usize>(reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(region)) >= Region::MEDIUM_BLOCK_SIZE;
 
 	Header* prev_header = header->pre_off != 0
 		? reinterpret_cast<Header*>(reinterpret_cast<char*>(header) - header->pre_off)
@@ -365,7 +363,7 @@ bool core::GAlloc::freeMedium(void* ptr, core::Region* region)
 	}
 	else if (!last_block) {
 		Header* next_next_header = reinterpret_cast<Header*>(reinterpret_cast<char*>(next_header) + next_header->next_off);
-		bool next_last_block = reinterpret_cast<char*>(next_next_header) - reinterpret_cast<char*>(region) >= Region::MEDIUM_BLOCK_SIZE;
+		bool next_last_block = static_cast<usize>(reinterpret_cast<char*>(next_next_header) - reinterpret_cast<char*>(region)) >= Region::MEDIUM_BLOCK_SIZE;
 		header->next_off = reinterpret_cast<char*>(next_next_header) - reinterpret_cast<char*>(header);
 		if (!next_last_block) {
 			next_next_header->pre_off = header->next_off;
@@ -433,11 +431,11 @@ void core::GAlloc::freeSmall(void* ptr, core::Region* region, RegionTable::Entry
 void core::GAlloc::freeSmallRegion(core::Region* region, RegionTable::Entry::Type size)
 {
 	mlw_debug_assert_msg(size != RegionTable::Entry::Type::Medium, "tryed to free a medium region in the small path");
-	if (!orphan_is_draining) {
+	if (!orphan_is_draining.load(sync::MemoryOrder::Relaxed)) {
 		sync::Lock l{ orphan_lock };
-		orphan_is_draining = true;
+		orphan_is_draining.store(true, sync::MemoryOrder::Relaxed);
 		drainRemoteList(orphan_pool);
-		orphan_is_draining = false;
+		orphan_is_draining.store(false, sync::MemoryOrder::Relaxed);
 	}
 
 	Region* next = region->next;
@@ -631,6 +629,34 @@ void core::GAlloc::free(void* ptr) {
 	}
 	else {
 
+		{
+			sync::ReadLock lock{ entry.ptr->migration_lock };
+			MLW_COMPILER_BARRIER();
+			switch (entry.type)
+			{
+			case RegionTable::Entry::Type::Medium:
+				entry.ptr->owning_cache->medium.has_remove_free.store(true, sync::MemoryOrder::Release);
+				break;
+			case RegionTable::Entry::Type::S8:
+				entry.ptr->owning_cache->small_8.has_remove_free.store(true, sync::MemoryOrder::Release);
+				break;
+			case RegionTable::Entry::Type::S16:
+				entry.ptr->owning_cache->small_16.has_remove_free.store(true, sync::MemoryOrder::Release);
+				break;
+			case RegionTable::Entry::Type::S32:
+				entry.ptr->owning_cache->small_32.has_remove_free.store(true, sync::MemoryOrder::Release);
+				break;
+			case RegionTable::Entry::Type::S64:
+				entry.ptr->owning_cache->small_64.has_remove_free.store(true, sync::MemoryOrder::Release);
+				break;
+			case RegionTable::Entry::Type::S128:
+				entry.ptr->owning_cache->small_128.has_remove_free.store(true, sync::MemoryOrder::Release);
+				break;
+			default:
+				break;
+			}
+		}
+
 		void** next_slot = static_cast<void**>(ptr);
 
 		void* expected = entry.ptr->remote_free.load(sync::MemoryOrder::Acquire);
@@ -642,31 +668,6 @@ void core::GAlloc::free(void* ptr) {
 			sync::MemoryOrder::Release,
 			sync::MemoryOrder::Acquire
 		));
-		sync::ReadLock lock{ entry.ptr->migration_lock };
-		MLW_COMPILER_BARRIER();
-		switch (entry.type)
-		{
-		case RegionTable::Entry::Type::Medium:
-			entry.ptr->owning_cache->medium.has_remove_free.store(true, sync::MemoryOrder::Release);
-			break;
-		case RegionTable::Entry::Type::S8:
-			entry.ptr->owning_cache->small_8.has_remove_free.store(true, sync::MemoryOrder::Release);
-			break;
-		case RegionTable::Entry::Type::S16:
-			entry.ptr->owning_cache->small_16.has_remove_free.store(true, sync::MemoryOrder::Release);
-			break;
-		case RegionTable::Entry::Type::S32:
-			entry.ptr->owning_cache->small_32.has_remove_free.store(true, sync::MemoryOrder::Release);
-			break;
-		case RegionTable::Entry::Type::S64:
-			entry.ptr->owning_cache->small_64.has_remove_free.store(true, sync::MemoryOrder::Release);
-			break;
-		case RegionTable::Entry::Type::S128:
-			entry.ptr->owning_cache->small_128.has_remove_free.store(true, sync::MemoryOrder::Release);
-			break;
-		default:
-			break;
-		}
 	}
 }
 
@@ -788,8 +789,8 @@ bool core::RegionTable::grow()
 			::VirtualFree(new_ptr, 0, MEM_RELEASE);
 			return false;
 		}
-		MLW_ASSUME_ALIGNED(base, 4096);
-		MLW_ASSUME_ALIGNED(new_ptr, 4096);
+		base = MLW_ASSUME_ALIGNED(base, 4096);
+		new_ptr =MLW_ASSUME_ALIGNED(new_ptr, 4096);
 		mlwMemcpy(new_ptr, base, size * sizeof(Entry));
 		::VirtualFree(base, 0, MEM_RELEASE);
 		base = new_ptr;
@@ -805,7 +806,7 @@ bool core::RegionTable::grow()
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
 	Entry* new_ptr = static_cast<Entry*>(::mremap(base, capacity * sizeof(Entry), capacity * sizeof(Entry) + PAGE_SIZE, MREMAP_MAYMOVE));
 	if (new_ptr == MAP_FAILED) return false;
-	MLW_ASSUME_ALIGNED(new_ptr, 4096);
+	new_ptr = MLW_ASSUME_ALIGNED(new_ptr, 4096);
 	base = new_ptr;
 	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
 	return true;
@@ -817,10 +818,8 @@ core::ThreadCache::~ThreadCache()
 	if (this == &mlw_g_alloc.orphan_pool) return;
 	mlw_g_alloc.drainRemoteList(*this);
 
-	if (this == &mlw_g_alloc.orphan_pool) return;
-
 	sync::Lock lock{ mlw_g_alloc.orphan_lock };
-	mlw_g_alloc.orphan_is_draining = true;
+	mlw_g_alloc.orphan_is_draining.store(true, sync::MemoryOrder::Relaxed);
 
 	auto migrate = [&](SizeClass& sc, SizeClass& orphan_sc, RegionTable::Entry::Type size) {
 		if (sc.active == nullptr) return;
@@ -832,6 +831,7 @@ core::ThreadCache::~ThreadCache()
 			sync::WriteLock l{ tail->migration_lock };
 			tail->owning_cache = &mlw_g_alloc.orphan_pool;
 			MLW_COMPILER_BARRIER();
+			//if (tail->remote_free != nullptr) orphan_sc.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
 			l.unlock();
 			tail = tail->next;
 		}
@@ -843,7 +843,7 @@ core::ThreadCache::~ThreadCache()
 		tail->next = orphan_sc.active;
 		if (orphan_sc.active) orphan_sc.active->previous = tail;
 		orphan_sc.active = sc.active;
-		if (sc.has_remove_free.load(sync::MemoryOrder::Relaxed)) orphan_sc.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
+		//if (sc.has_remove_free.load(sync::MemoryOrder::Relaxed)) orphan_sc.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
 
 		tail = orphan_sc.active;
 		while (orphan_sc.free_slabs >= 2 && tail) {
@@ -871,6 +871,13 @@ core::ThreadCache::~ThreadCache()
 	migrate(small_64, mlw_g_alloc.orphan_pool.small_64, RegionTable::Entry::Type::S64);
 	migrate(small_128, mlw_g_alloc.orphan_pool.small_128, RegionTable::Entry::Type::S128);
 	migrate(medium, mlw_g_alloc.orphan_pool.medium, RegionTable::Entry::Type::Medium);
+	mlw_g_alloc.orphan_pool.small_8.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
+	mlw_g_alloc.orphan_pool.small_16.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
+	mlw_g_alloc.orphan_pool.small_32.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
+	mlw_g_alloc.orphan_pool.small_64.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
+	mlw_g_alloc.orphan_pool.small_128.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
+	mlw_g_alloc.orphan_pool.medium.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
+	mlw_g_alloc.drainRemoteList(mlw_g_alloc.orphan_pool);
 
-	mlw_g_alloc.orphan_is_draining = false;
+	mlw_g_alloc.orphan_is_draining.store(false, sync::MemoryOrder::Relaxed);
 }
