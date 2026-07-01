@@ -194,7 +194,6 @@ namespace core
 
         ThreadCache orphan_pool{};
         sync::spin_lock::MCS orphan_lock{};
-		sync::Atomic<bool> orphan_is_draining{ false };
 
 		OSTable os_table{};
 		sync::spin_lock::MCS os_lock{};

@@ -259,7 +259,8 @@ bool core::GAlloc::allocMediumRegion(core::Region* last_region, core::ThreadCach
 	}
 #endif
 	new_reg->next = nullptr;
-	new_reg->remote_free = nullptr;
+	new (&new_reg->remote_free) sync::Atomic<void*>{ nullptr };
+	new (&new_reg->migration_lock) sync::RWLock{};
 	new_reg->used_count = 0;
 	new_reg->owning_cache = &cache;
 	new_reg->free_block = reinterpret_cast<Header*>(new_reg + 1);
@@ -290,11 +291,12 @@ bool core::GAlloc::allocMediumRegion(core::Region* last_region, core::ThreadCach
 
 void core::GAlloc::freeMediumRegion(core::Region* region)
 {
-	if (!orphan_is_draining.load(sync::MemoryOrder::Relaxed)) {
-		sync::Lock l{ orphan_lock };
-		orphan_is_draining.store(true, sync::MemoryOrder::Relaxed);
+	Optional<sync::Lock<sync::spin_lock::MCS>> l = nullptr;
+	sync::Lock<sync::spin_lock::MCS>::tryLock(orphan_lock, l);
+
+	if (l.isSome()) {
 		drainRemoteList(orphan_pool);
-		orphan_is_draining.store(false, sync::MemoryOrder::Relaxed);
+		l->unlock();
 	}
 
 	Region* next = region->next;
@@ -324,82 +326,84 @@ bool core::GAlloc::freeMedium(void* ptr, core::Region* region)
 {
 	Header* header = static_cast<Header*>(ptr) - 1;
 	mlw_debug_assert_msg(header->align != 0, "freed a free block");
-	Header* next_header = reinterpret_cast<Header*>(reinterpret_cast<char*>(header) + header->next_off);
-	bool last_block = static_cast<usize>(reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(region)) >= Region::MEDIUM_BLOCK_SIZE;
+
+	Header* next_header = reinterpret_cast<Header*>(
+		reinterpret_cast<char*>(header) + header->next_off);
+	bool last_block = static_cast<usize>(
+		reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(region))
+		>= Region::MEDIUM_BLOCK_SIZE;
 
 	Header* prev_header = header->pre_off != 0
 		? reinterpret_cast<Header*>(reinterpret_cast<char*>(header) - header->pre_off)
 		: nullptr;
 
-	bool have_new_free_ptrs = false;
+	bool merged_backward = false;
 
-	if (header->pre_off != 0 && prev_header->align != 0) {
-		have_new_free_ptrs = true;
+	// === BACKWARD ===
+	if (prev_header != nullptr && prev_header->align == 0) {
+		// prev is free and already in the free list — just extend it
+		merged_backward = true;
+		prev_header->next_off =
+			reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(prev_header);
+		if (!last_block) next_header->pre_off = prev_header->next_off;
 		header = prev_header;
-		header->next_off = reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(header);
-		if (!last_block) {
-			next_header->pre_off = header->next_off;
-		}
 	}
-	else if (header->pre_off == 0 && reinterpret_cast<Header*>(region + 1) != header) {
-		Header* new_header = reinterpret_cast<Header*>(region + 1);
-		new_header->pre_off = 0;
-		new_header->next_off = reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(new_header);
-		if (!last_block) {
-			next_header->pre_off = new_header->next_off;
-		}
-		header = new_header;
-
+	else if (header->pre_off == 0
+		&& reinterpret_cast<Header*>(region + 1) != header) {
+		// dead padding before us — reclaim by moving header to region start
+		Header* reclaimed = reinterpret_cast<Header*>(region + 1);
+		reclaimed->pre_off = 0;
+		reclaimed->next_off =
+			reinterpret_cast<char*>(next_header) - reinterpret_cast<char*>(reclaimed);
+		if (!last_block) next_header->pre_off = reclaimed->next_off;
+		header = reclaimed;
 	}
 
-	if ((last_block || next_header->align != 0) && !have_new_free_ptrs) {
-		header->getFreePtr()->next_free_block = region->free_block;
-		header->getFreePtr()->prev_free_block = nullptr;
-		if (region->free_block) {
-			header->getFreePtr()->next_free_block->getFreePtr()->prev_free_block = header;
-		}
-		region->free_block = header;
-	}
-	else if (!last_block) {
-		Header* next_next_header = reinterpret_cast<Header*>(reinterpret_cast<char*>(next_header) + next_header->next_off);
-		bool next_last_block = static_cast<usize>(reinterpret_cast<char*>(next_next_header) - reinterpret_cast<char*>(region)) >= Region::MEDIUM_BLOCK_SIZE;
-		header->next_off = reinterpret_cast<char*>(next_next_header) - reinterpret_cast<char*>(header);
-		if (!next_last_block) {
-			next_next_header->pre_off = header->next_off;
-		}
+	// === FORWARD ===
+	if (!last_block && next_header->align == 0) {
+		// next is free — absorb it
+		Header* next_next = reinterpret_cast<Header*>(
+			reinterpret_cast<char*>(next_header) + next_header->next_off);
+		bool next_last = static_cast<usize>(
+			reinterpret_cast<char*>(next_next) - reinterpret_cast<char*>(region))
+			>= Region::MEDIUM_BLOCK_SIZE;
 
-		if (have_new_free_ptrs) {
-			//remove form list
-			Header* next_p = next_header->getFreePtr()->next_free_block;
-			Header* prv_p = next_header->getFreePtr()->prev_free_block;
-			if (prv_p) {
-				prv_p->getFreePtr()->next_free_block = next_p;
-			}
-			else {
-				region->free_block = next_p;
-			}
-			if (next_p) {
-				next_p->getFreePtr()->prev_free_block = prv_p;
-			}
+		header->next_off =
+			reinterpret_cast<char*>(next_next) - reinterpret_cast<char*>(header);
+		if (!next_last) next_next->pre_off = header->next_off;
+
+		// free list: next_header is currently linked
+		Header* next_f = next_header->getFreePtr()->next_free_block;
+		Header* prev_f = next_header->getFreePtr()->prev_free_block;
+
+		if (merged_backward) {
+			// header (=prev) is already in the list — just unlink next_header
+			if (prev_f) prev_f->getFreePtr()->next_free_block = next_f;
+			else        region->free_block = next_f;
+			if (next_f) next_f->getFreePtr()->prev_free_block = prev_f;
 		}
 		else {
-			//use old posision but replace
-			Header* next_p = next_header->getFreePtr()->next_free_block;
-			Header* prv_p = next_header->getFreePtr()->prev_free_block;
-			if (prv_p) {
-				prv_p->getFreePtr()->next_free_block = header;
-			}
-			else {
-				region->free_block = header;
-			}
-			if (next_p) {
-				next_p->getFreePtr()->prev_free_block = header;
-			}
+			// header is NOT in the list — take next_header's slot
+			header->getFreePtr()->prev_free_block = prev_f;
+			header->getFreePtr()->next_free_block = next_f;
+			if (prev_f) prev_f->getFreePtr()->next_free_block = header;
+			else        region->free_block = header;
+			if (next_f) next_f->getFreePtr()->prev_free_block = header;
 		}
 	}
-
+	else if (!merged_backward) {
+		// no forward merge, no backward merge — insert at head
+		header->getFreePtr()->next_free_block = region->free_block;
+		header->getFreePtr()->prev_free_block = nullptr;
+		if (region->free_block)
+			region->free_block->getFreePtr()->prev_free_block = header;
+		region->free_block = header;
+	}
+	// else: merged_backward + no forward = prev already in list, nothing to do
 
 	header->align = 0;
+
+	// --- bookkeeping ---
 	ThreadCache* cache = region->owning_cache;
 	--region->used_count;
 	if (region->used_count == 0) ++cache->medium.free_slabs;
@@ -430,11 +434,13 @@ void core::GAlloc::freeSmall(void* ptr, core::Region* region, RegionTable::Entry
 void core::GAlloc::freeSmallRegion(core::Region* region, RegionTable::Entry::Type size)
 {
 	mlw_debug_assert_msg(size != RegionTable::Entry::Type::Medium, "tryed to free a medium region in the small path");
-	if (!orphan_is_draining.load(sync::MemoryOrder::Relaxed)) {
-		sync::Lock l{ orphan_lock };
-		orphan_is_draining.store(true, sync::MemoryOrder::Relaxed);
+
+	Optional<sync::Lock<sync::spin_lock::MCS>> l = nullptr;
+	sync::Lock<sync::spin_lock::MCS>::tryLock(orphan_lock, l);
+
+	if (l.isSome()) {
 		drainRemoteList(orphan_pool);
-		orphan_is_draining.store(false, sync::MemoryOrder::Relaxed);
+		l->unlock();
 	}
 
 	Region* next = region->next;
@@ -511,7 +517,8 @@ bool core::GAlloc::allocSmallRegion(core::Region* last_region, core::ThreadCache
 	usize block_size = static_cast<usize>(size);
 
 	new_reg->next = nullptr;
-	new_reg->remote_free = nullptr;
+	new (&new_reg->remote_free) sync::Atomic<void*>{ nullptr };
+	new (&new_reg->migration_lock) sync::spin_lock::MCS{};
 	new_reg->used_count = 0;
 	new_reg->owning_cache = &cache;
 
@@ -560,7 +567,7 @@ void* core::GAlloc::osAlloc(usize size)
 #if defined(MLW_WINDOWS)
 		::VirtualFree(ptr, 0, MEM_RELEASE);
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-		::munmap(ptr, alloc_size);
+		::munmap(ptr, size);
 #endif
 		return nullptr;
 	}
@@ -717,7 +724,137 @@ void core::GAlloc::free(void* ptr) {
 
 void* core::GAlloc::realloc(void* ptr, usize new_size)
 {
-	TODO();
+    if (ptr == nullptr) return alignAlloc(new_size, 8);
+    if (new_size == 0) { free(ptr); return nullptr; }
+
+    new_size = (new_size + alignof(Header) - 1) & ~(alignof(Header) - 1);
+
+    ThreadCache& cache = thread_cache;
+
+    RegionTable::Entry entry;
+    bool os_region;
+    {
+        sync::ReadLock l{ region_list_lock };
+        RegionTable::Entry* e = region_table.find(ptr);
+        os_region = (e == nullptr);
+        if (!os_region) entry = *e;
+    }
+
+    // --- OS allocs ---
+    if (os_region) {
+        usize rounded = (new_size + PAGE_MASK) & ~PAGE_MASK;
+
+        sync::Lock l{ os_lock };
+        Optional<OSTable::Entry> old = os_table.findAndRemove(ptr);
+        if (old.isNone()) return nullptr;
+
+        if (rounded <= old->size) {
+            os_table.insert(OSTable::Entry{ old->ptr, old->size });
+            return ptr;
+        }
+
+#if defined(MLW_LINUX) || defined(MLW_MAC)
+        void* remapped = ::mremap(old->ptr, old->size, rounded, MREMAP_MAYMOVE);
+        if (remapped != MAP_FAILED) {
+            os_table.insert(OSTable::Entry{ remapped, rounded });
+            return remapped;
+        }
+#endif
+        // fallback: new alloc, copy, free old
+        l.unlock();
+        void* fresh = osAlloc(new_size);
+        if (!fresh) {
+            // put the old entry back
+            sync::Lock l2{ os_lock };
+            os_table.insert(OSTable::Entry{ old->ptr, old->size });
+            return nullptr;
+        }
+        mlwMemcpy(fresh, old->ptr, old->size);
+#if defined(MLW_WINDOWS)
+        ::VirtualFree(old->ptr, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+        ::munmap(old->ptr, old->size);
+#endif
+        return fresh;
+    }
+
+    // --- small allocs: always alloc + copy + free ---
+    if (entry.type != RegionTable::Entry::Type::Medium) {
+        usize old_size = static_cast<usize>(entry.type);
+        if (new_size <= old_size) return ptr;
+
+        void* fresh = alignAlloc(new_size, 8);
+        if (!fresh) return nullptr;
+        mlwMemcpy(fresh, ptr, old_size);
+        free(ptr);
+        return fresh;
+    }
+
+    // --- medium allocs ---
+    Header* header = static_cast<Header*>(ptr) - 1;
+    usize old_usable = header->next_off - sizeof(Header);
+
+    if (new_size <= old_usable) return ptr;
+
+    // don't try in-place extend if cross-thread or growing beyond medium
+    if (new_size >= MAX_SIZE || entry.ptr->owning_cache != &cache) {
+        void* fresh = alignAlloc(new_size, header->align);
+        if (!fresh) return nullptr;
+        mlwMemcpy(fresh, ptr, old_usable);
+        free(ptr);
+        return fresh;
+    }
+
+    // try extending into next physical block if it's free
+    Region* region = entry.ptr;
+    Header* next_h = reinterpret_cast<Header*>(reinterpret_cast<char*>(header) + header->next_off);
+    bool last_block = static_cast<usize>(reinterpret_cast<char*>(next_h) - reinterpret_cast<char*>(region)) >= Region::MEDIUM_BLOCK_SIZE;
+
+    if (!last_block && next_h->align == 0) {
+        usize combined = header->next_off + next_h->next_off;
+        usize combined_usable = combined - sizeof(Header);
+
+        if (combined_usable >= new_size) {
+            // unlink next_h from free list
+            Header* next_f = next_h->getFreePtr()->next_free_block;
+            Header* prev_f = next_h->getFreePtr()->prev_free_block;
+            if (prev_f) prev_f->getFreePtr()->next_free_block = next_f;
+            else        region->free_block = next_f;
+            if (next_f) next_f->getFreePtr()->prev_free_block = prev_f;
+
+            Header* next_next = reinterpret_cast<Header*>(reinterpret_cast<char*>(next_h) + next_h->next_off);
+            bool next_last = static_cast<usize>(reinterpret_cast<char*>(next_next) - reinterpret_cast<char*>(region)) >= Region::MEDIUM_BLOCK_SIZE;
+
+            usize leftover = combined_usable - new_size;
+            if (leftover > MIN_SIZE + sizeof(Header)) {
+                // split: take what we need, return the rest
+                header->next_off = new_size + sizeof(Header);
+                Header* split = reinterpret_cast<Header*>(reinterpret_cast<char*>(header) + header->next_off);
+                split->pre_off = header->next_off;
+                split->next_off = reinterpret_cast<char*>(next_next) - reinterpret_cast<char*>(split);
+                split->align = 0;
+                if (!next_last) next_next->pre_off = split->next_off;
+
+                split->getFreePtr()->prev_free_block = nullptr;
+                split->getFreePtr()->next_free_block = region->free_block;
+                if (region->free_block) region->free_block->getFreePtr()->prev_free_block = split;
+                region->free_block = split;
+            }
+            else {
+                // absorb the whole next block
+                header->next_off = combined;
+                if (!next_last) next_next->pre_off = combined;
+            }
+            return ptr;
+        }
+    }
+
+    // fallback: alloc + copy + free
+    void* fresh = alignAlloc(new_size, header->align);
+    if (!fresh) return nullptr;
+    mlwMemcpy(fresh, ptr, old_usable);
+    free(ptr);
+    return fresh;
 }
 
 
@@ -992,7 +1129,6 @@ core::ThreadCache::~ThreadCache()
 	mlw_g_alloc.drainRemoteList(*this);
 
 	sync::Lock lock{ mlw_g_alloc.orphan_lock };
-	mlw_g_alloc.orphan_is_draining.store(true, sync::MemoryOrder::Relaxed);
 
 	auto migrate = [&](SizeClass& sc, SizeClass& orphan_sc, RegionTable::Entry::Type size) {
 		if (sc.active == nullptr) return;
@@ -1052,5 +1188,4 @@ core::ThreadCache::~ThreadCache()
 	mlw_g_alloc.orphan_pool.medium.has_remove_free.store(true, sync::MemoryOrder::Relaxed);
 	mlw_g_alloc.drainRemoteList(mlw_g_alloc.orphan_pool);
 
-	mlw_g_alloc.orphan_is_draining.store(false, sync::MemoryOrder::Relaxed);
 }
