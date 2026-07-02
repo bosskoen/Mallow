@@ -7,8 +7,10 @@
 #include "memory.h"
 #endif
 
-thread_local core::ThreadCache thread_cache{};
-core::GAlloc mlw_g_alloc{};
+namespace core {
+    thread_local ThreadCache thread_cache{};
+    GAlloc mlw_g_alloc{};
+}
 
 // Check whether `block` has enough room for `size` bytes at the requested
 // alignment. Returns the aligned payload pointer, or nullptr if it won't fit.
@@ -1092,20 +1094,20 @@ core::RegionTable::RegionTable()
 	base = static_cast<Entry *>(::VirtualAlloc(nullptr, ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
 	if (!base)
 	{
-		panic("failed to reserve region table memory");
+		panic_mem("failed to reserve region table memory");
 	}
 	void *committed = ::VirtualAlloc(base, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
 	if (!committed)
 	{
 		::VirtualFree(base, 0, MEM_RELEASE);
 		base = nullptr;
-		panic("failed to reserve region table memory");
+		panic_mem("failed to commit region table memory");
 	}
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
 	base = static_cast<Entry *>(::mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
 	if (base == MAP_FAILED)
 	{
-		panic("failed to mmap region table memory");
+		panic_mem("failed to mmap region table memory");
 	}
 #endif
 	capacity = static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
@@ -1122,14 +1124,14 @@ core::OSTable::OSTable()
 	base = static_cast<Entry *>(::VirtualAlloc(nullptr, ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
 	if (!base)
 	{
-		panic("failed to reserve region table memory");
+		panic_mem("failed to reserve region table memory");
 	}
 	void *committed = ::VirtualAlloc(base, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
 	if (!committed)
 	{
 		::VirtualFree(base, 0, MEM_RELEASE);
 		base = nullptr;
-		panic("failed to reserve region table memory");
+		panic_mem("failed to commit region table memory");
 	}
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
 	base = static_cast<Entry *>(::mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));

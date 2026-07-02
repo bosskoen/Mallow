@@ -25,12 +25,12 @@
         }                                                                                                     \
         else                                                                                                  \
         {                                                                                                     \
-            core::FormatBufferType &buf = core::detail::getFormatBuffer();                                    \
-            buf.len = 0;                                                                                      \
-            mlw_write(buf, format_str, ##__VA_ARGS__);                                                        \
+            core::FormatBufferType &__format_write_buf = core::detail::getFormatBuffer();                                    \
+            __format_write_buf.len = 0;                                                                                      \
+            mlw_write(__format_write_buf, format_str, ##__VA_ARGS__);                                                        \
             if constexpr (newline)                                                                            \
-                buf.append('\n');                                                                             \
-            io::writeHandle(handle, core::CStr(buf.ptr, buf.len));                                            \
+                __format_write_buf.append('\n');                                                                             \
+            io::writeHandle(handle, core::CStr(__format_write_buf.ptr, __format_write_buf.len));                                            \
         }                                                                                                     \
     } while (0)
 
@@ -45,7 +45,20 @@
 #define MLW_DEBUG_PRINT(format_str, ...)
 #endif
 
-// make path were you can call write so no format needs to hapen
+#define MLW_STRINGIFY2(x) #x
+#define MLW_STRINGIFY(x) MLW_STRINGIFY2(x)
+
+//a panic macro that doesnt use memory allocation
+#define panic_mem(msg)                                      \
+    do                                                  \
+    {                                                   \
+        eprint("panic at " __FILE__ ":"                 \
+               MLW_STRINGIFY(__LINE__) "\n");           \
+        eprint(msg "\n");                               \
+        MLW_DEBUGBREAK();                               \
+        core::mlwTerminate(1);                          \
+    } while (0)
+
 #define panic(format_str, ...)                          \
     do                                                  \
     {                                                   \

@@ -1,4 +1,5 @@
 #include "io/format.h"
+#include "macro.h"
 
 #if defined(MLW_WINDOWS)
 #include <windows.h>
@@ -15,19 +16,36 @@ namespace core::detail
 		thread_local FormatBufferType buf = []()
 			{
 				FormatBufferType b;
+
 #if defined(MLW_WINDOWS)
 
 				b.ptr = static_cast<char*>(VirtualAlloc(nullptr, ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
-				VirtualAlloc(b.ptr, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
+
+				if (!b.ptr)
+					panic_mem("VirtualAlloc(MEM_RESERVE) failed.");
+
+				if (!VirtualAlloc(b.ptr, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+				{
+					panic_mem("VirtualAlloc(MEM_COMMIT) failed.");
+				}
+
 #else
-				b.ptr = (char*)mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+				b.ptr = static_cast<char*>(
+					mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+
+				if (b.ptr == MAP_FAILED)
+					panic_mem("mmap() failed.");
+
 #endif
 
 				b.ptr = MLW_ASSUME_ALIGNED(b.ptr, 4096);
 				b.len = 0;
 				b.capacity = static_cast<index_t>(PAGE_SIZE);
+
 				return b;
 			}();
+
 		return buf;
 	}
 }
@@ -35,29 +53,49 @@ namespace core::detail
 void core::FormatBufferType::realocate()
 {
 #if defined(MLW_WINDOWS)
+
 	if ((capacity & GRAN_MASK) == 0)
 	{
-		// need to reserve more memory
-		// see if can extand block
 		char* new_ptr = static_cast<char*>(VirtualAlloc(nullptr, ((capacity >> GRAN_SHIFT) + 1) * ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
-		VirtualAlloc(new_ptr, capacity + PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
-		// memcpy
 
+		if (!new_ptr)
+			panic_mem("VirtualAlloc(MEM_RESERVE) failed while growing format buffer.");
+
+		if (!VirtualAlloc(new_ptr, capacity + PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+		{
+			VirtualFree(new_ptr, 0, MEM_RELEASE);
+			panic_mem("VirtualAlloc(MEM_COMMIT) failed while growing format buffer.");
+		}
 
 		mlwMemcpy(MLW_ASSUME_ALIGNED(new_ptr, 4096), MLW_ASSUME_ALIGNED(ptr, 4096), len);
 
-		VirtualFree(ptr, 0, MEM_RELEASE);
+		if (!VirtualFree(ptr, 0, MEM_RELEASE))
+			panic_mem("VirtualFree() failed.");
+
 		ptr = new_ptr;
 		capacity += static_cast<index_t>(PAGE_SIZE);
 	}
 	else
 	{
-		VirtualAlloc(ptr + capacity, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
+		if (!VirtualAlloc(ptr + capacity, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+		{
+			panic_mem("VirtualAlloc(MEM_COMMIT) failed while extending format buffer.");
+		}
+
 		capacity += static_cast<index_t>(PAGE_SIZE);
 	}
+
 #else
-	ptr = static_cast<char*>(mremap(ptr, capacity, capacity + PAGE_SIZE, MREMAP_MAYMOVE));
+
+	void* new_ptr = mremap(ptr, capacity, capacity + PAGE_SIZE, MREMAP_MAYMOVE);
+
+	if (new_ptr == MAP_FAILED)
+		panic_mem("mremap() failed.");
+
+	ptr = static_cast<char*>(new_ptr);
 	ptr = MLW_ASSUME_ALIGNED(ptr, 4096);
+
 	capacity += static_cast<index_t>(PAGE_SIZE);
+
 #endif
 }
