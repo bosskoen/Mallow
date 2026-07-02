@@ -1,5 +1,8 @@
 #core/core/test/CMakeLits.txt
-add_library(core_test STATIC test.cpp)
+add_library(core_test STATIC
+            test.cpp
+            test_galloc_threaded.cpp
+            )
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.. core)
 

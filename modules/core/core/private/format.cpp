@@ -95,7 +95,7 @@ void core::FormatBufferType::realocate()
 	ptr = static_cast<char*>(new_ptr);
 	ptr = MLW_ASSUME_ALIGNED(ptr, 4096);
 
-	capacity += static_cast<index_t>(PAGE_SIZE);
+	capacity += static_cast<index_t>(mlwPageSize());
 
 #endif
 }

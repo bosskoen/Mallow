@@ -16,7 +16,7 @@ echo "[4/6] configuring generated tests..."
 cmake -S generated/tests -B generated/tests/build
 
 echo "[5/6] building generated tests..."
-cmake --build generated/tests/build
+cmake --build generated/tests/build --config Release
 
 echo "[6/6] running tests..."
 ./generated/tests/build/all_tests

@@ -18,8 +18,8 @@ cmake -S generated/tests -B generated/tests/build
 if errorlevel 1 exit /b 1
 
 echo [5/6] building generated tests...
-cmake --build generated/tests/build
+cmake --build generated/tests/build --config Release
 if errorlevel 1 exit /b 1
 
 echo [6/6] running tests...
-generated\tests\build\Debug\all_tests.exe
+generated\tests\build\Release\all_tests.exe

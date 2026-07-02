@@ -26,7 +26,7 @@ static __forceinline usize mlw_ctz64(uint64 x)
 #define MLW_CTZ(x) mlw_ctz64(x)
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
 
-#define MLW_CTZ(x) __builtin_ctzll(x)
+#define MLW_CTZ(x) static_cast<usize>(__builtin_ctzll(x))
 #endif
 
 #if defined(MLW_MSVC)
