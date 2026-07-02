@@ -17,21 +17,21 @@ bool core::StackAllocator::init(usize size)
 		return false;
 	}
 
-	size = (size + PAGE_MASK) & ~PAGE_MASK; // round up to page size
+	size = (size + mlwPageMask()) & ~mlwPageMask(); // round up to page size
 
 #if defined(MLW_WINDOWS)
 	base = ::VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_READWRITE);
 	if (!base)
 		return false;
 
-	void *commit = ::VirtualAlloc(base, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
+	void *commit = ::VirtualAlloc(base, mlwPageSize(), MEM_COMMIT, PAGE_READWRITE);
 	if (!commit)
 	{
 		::VirtualFree(base, 0, MEM_RELEASE);
 		base = nullptr;
 		return false;
 	}
-	committed = PAGE_SIZE;
+	committed = mlwPageSize();
 
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
 	base = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -82,7 +82,7 @@ void *core::StackAllocator::alloc(usize size, usize alignment)
 #if defined(MLW_WINDOWS)
 	if (new_offset + size > committed)
 	{
-		usize new_committed = (new_offset + size + PAGE_MASK) & ~PAGE_MASK;
+		usize new_committed = (new_offset + size + mlwPageMask()) & ~mlwPageMask();
 		void *commit = VirtualAlloc(static_cast<uint8 *>(base) + committed, new_committed - committed, MEM_COMMIT, PAGE_READWRITE);
 		if (!commit)
 			return nullptr;
@@ -106,7 +106,7 @@ bool core::BlockAllocator::init(usize size, usize b_size)
 	block_size = mlwMax(sizeof(void *), b_size);
 	block_size = (block_size + alignof(void *) - 1) & ~(alignof(void *) - 1);
 
-	size = (size + PAGE_MASK) & ~PAGE_MASK; // round up to page size
+	size = (size + mlwPageMask()) & ~mlwPageMask(); // round up to page size
 #if defined(MLW_WINDOWS)
 	base = ::VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 #elif defined(MLW_LINUX) || defined(MLW_MAC)

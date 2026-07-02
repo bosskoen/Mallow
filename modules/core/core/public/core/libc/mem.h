@@ -4,13 +4,27 @@
 
 namespace
 {
-    extern "C" void *memcpy(void *__restrict dst, const void *__restrict src, usize n);
-    extern "C" void *memset(void *dst, int value, usize n);
+    extern "C" void* memcpy(void* __restrict dst, const void* __restrict src, usize n);
+    extern "C" void* memset(void* dst, int value, usize n);
 
 }
 
 namespace core
 {
+    namespace detail
+    {
+        struct PlatformInfo {
+            usize page_size;
+            usize page_mask;
+            usize page_shift;
+            usize alloc_granularity;
+            usize gran_mask;
+            usize gran_shift;
+        };
+        const PlatformInfo& queryPlatform();
+    }
+
+
     MLW_FORCE_INLINE void *mlwMemcpy(void *__restrict dst, const void *__restrict src, usize n)
     {
         // u8 *d = static_cast<u8 *>(dst);
@@ -105,11 +119,33 @@ namespace core
 namespace core
 {
 
-    extern const usize PAGE_SIZE;
-    extern const usize PAGE_MASK;
-    extern const usize PAGE_SHIFT;
+        MLW_FORCE_INLINE usize mlwPageSize()
+        {
+            return detail::queryPlatform().page_size;
+        }
 
-    extern const usize ALLOC_GRANULARITY; // same on all platforms, just = PAGE_SIZE on linux/mac
-    extern const usize GRAN_MASK;
-    extern const usize GRAN_SHIFT;
+        MLW_FORCE_INLINE usize mlwPageMask()
+        {
+            return detail::queryPlatform().page_mask;
+        }
+
+        MLW_FORCE_INLINE usize mlwPageShift()
+        {
+            return detail::queryPlatform().page_shift;
+        }
+
+        MLW_FORCE_INLINE usize mlwAllocGranularity()
+        {
+            return detail::queryPlatform().alloc_granularity;
+        }
+
+        MLW_FORCE_INLINE usize mlwGranMask()
+        {
+            return detail::queryPlatform().gran_mask;
+        }
+
+        MLW_FORCE_INLINE usize mlwGranShift()
+        {
+            return detail::queryPlatform().gran_shift;
+        }
 }

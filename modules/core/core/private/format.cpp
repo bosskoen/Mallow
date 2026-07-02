@@ -19,12 +19,12 @@ namespace core::detail
 
 #if defined(MLW_WINDOWS)
 
-				b.ptr = static_cast<char*>(VirtualAlloc(nullptr, ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
+				b.ptr = static_cast<char*>(VirtualAlloc(nullptr, mlwAllocGranularity(), MEM_RESERVE, PAGE_READWRITE));
 
 				if (!b.ptr)
 					panic_mem("VirtualAlloc(MEM_RESERVE) failed.");
 
-				if (!VirtualAlloc(b.ptr, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+				if (!VirtualAlloc(b.ptr, mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
 				{
 					panic_mem("VirtualAlloc(MEM_COMMIT) failed.");
 				}
@@ -32,7 +32,7 @@ namespace core::detail
 #else
 
 				b.ptr = static_cast<char*>(
-					mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+					mmap(nullptr, mlwPageSize(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
 
 				if (b.ptr == MAP_FAILED)
 					panic_mem("mmap() failed.");
@@ -41,7 +41,7 @@ namespace core::detail
 
 				b.ptr = MLW_ASSUME_ALIGNED(b.ptr, 4096);
 				b.len = 0;
-				b.capacity = static_cast<index_t>(PAGE_SIZE);
+				b.capacity = static_cast<index_t>(mlwPageSize());
 
 				return b;
 			}();
@@ -54,14 +54,14 @@ void core::FormatBufferType::realocate()
 {
 #if defined(MLW_WINDOWS)
 
-	if ((capacity & GRAN_MASK) == 0)
+	if ((capacity & mlwGranMask()) == 0)
 	{
-		char* new_ptr = static_cast<char*>(VirtualAlloc(nullptr, ((capacity >> GRAN_SHIFT) + 1) * ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
+		char* new_ptr = static_cast<char*>(VirtualAlloc(nullptr, ((capacity >> mlwGranShift()) + 1) * mlwAllocGranularity(), MEM_RESERVE, PAGE_READWRITE));
 
 		if (!new_ptr)
 			panic_mem("VirtualAlloc(MEM_RESERVE) failed while growing format buffer.");
 
-		if (!VirtualAlloc(new_ptr, capacity + PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+		if (!VirtualAlloc(new_ptr, capacity + mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
 		{
 			VirtualFree(new_ptr, 0, MEM_RELEASE);
 			panic_mem("VirtualAlloc(MEM_COMMIT) failed while growing format buffer.");
@@ -73,21 +73,21 @@ void core::FormatBufferType::realocate()
 			panic_mem("VirtualFree() failed.");
 
 		ptr = new_ptr;
-		capacity += static_cast<index_t>(PAGE_SIZE);
+		capacity += static_cast<index_t>(mlwPageSize());
 	}
 	else
 	{
-		if (!VirtualAlloc(ptr + capacity, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+		if (!VirtualAlloc(ptr + capacity, mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
 		{
 			panic_mem("VirtualAlloc(MEM_COMMIT) failed while extending format buffer.");
 		}
 
-		capacity += static_cast<index_t>(PAGE_SIZE);
+		capacity += static_cast<index_t>(mlwPageSize());
 	}
 
 #else
 
-	void* new_ptr = mremap(ptr, capacity, capacity + PAGE_SIZE, MREMAP_MAYMOVE);
+	void* new_ptr = mremap(ptr, capacity, capacity + mlwPageSize(), MREMAP_MAYMOVE);
 
 	if (new_ptr == MAP_FAILED)
 		panic_mem("mremap() failed.");

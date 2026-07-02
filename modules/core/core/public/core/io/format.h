@@ -120,7 +120,7 @@ concept FormattableValue =
             }
             if (mlwIsInf(value))
             {
-                buffer.append(value < 0.0 ? core::CStr("-Inf") : core::CStr("Inf"));
+                buffer.append(value < 0.0 ? ::core::CStr("-Inf") : ::core::CStr("Inf"));
                 return;
             }
 

@@ -11,34 +11,26 @@
 #include "libc/math.h"
 #include "thread/atomic.h"
 
-static core::sync::Atomic<uint32> thread_id_counter{0};
+static core::sync::Atomic<uint32> thread_id_counter{ 0 };
 const thread_local uint32 core::thread_id = thread_id_counter.fetchAdd(1, core::sync::MemoryOrder::Relaxed);
 
-namespace {
-    struct PlatformInfo {
-        usize page_size;
-        usize alloc_granularity;
-    };
+namespace core::detail{
 
-    PlatformInfo queryPlatform() {
+
+	const PlatformInfo& queryPlatform() {
+		const static PlatformInfo INFO = []() -> const PlatformInfo {
 #if defined(MLW_WINDOWS)
-        SYSTEM_INFO si;
-        GetSystemInfo(&si);
-        return { (usize)si.dwPageSize, (usize)si.dwAllocationGranularity };
+			SYSTEM_INFO si;
+			GetSystemInfo(&si);
+			return { (usize)si.dwPageSize, (usize)si.dwPageSize - 1, MLW_CTZ((usize)si.dwPageSize), (usize)si.dwAllocationGranularity, (usize)si.dwAllocationGranularity - 1, MLW_CTZ((usize)si.dwAllocationGranularity) };
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-        usize page = (usize)sysconf(_SC_PAGESIZE);
-        return { page, page };  // no separate granularity concept
+			usize page = (usize)sysconf(_SC_PAGESIZE);
+			return { page, page - 1, MLW_CTZ(page), page, page - 1, MLW_CTZ(page) };
 #else
 #error "Unsupported platform"
 #endif
-    }
+			}();
 
-    const PlatformInfo INFO = queryPlatform();
+		return INFO;
+	}
 }
-
-const usize core::PAGE_SIZE         = INFO.page_size;
-const usize core::PAGE_MASK         = INFO.page_size - 1;
-const usize core::PAGE_SHIFT        = MLW_CTZ(INFO.page_size);
-const usize core::ALLOC_GRANULARITY = INFO.alloc_granularity;
-const usize core::GRAN_MASK         = INFO.alloc_granularity - 1;
-const usize core::GRAN_SHIFT        = MLW_CTZ(INFO.alloc_granularity);

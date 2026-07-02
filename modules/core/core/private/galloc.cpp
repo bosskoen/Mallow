@@ -39,7 +39,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 	// round size up to Header alignment so block boundaries stay aligned
 	size = (size + alignof(Header) - 1) & ~(alignof(Header) - 1);
 
-	if (align == PAGE_SIZE)
+	if (align == mlwPageSize())
 	{
 		return osAlloc(size);
 	}
@@ -102,6 +102,8 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 		// pop the first free cell
 		void *block = reinterpret_cast<void *>(current->free_block);
 		current->free_block = *reinterpret_cast<Header **>(block);
+
+		if (current->used_count == 0) --sc.free_slabs;
 		++current->used_count;
 		return block;
 	}
@@ -180,7 +182,9 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 		Header *prev_f = block->getFreePtr()->prev_free_block;
 		Header *next_f = block->getFreePtr()->next_free_block;
 
-		usize padding = reinterpret_cast<char *>(new_header) - reinterpret_cast<char *>(block + 1);
+		usize padding = (new_header > block)
+			? static_cast<usize>(reinterpret_cast<char*>(new_header) - reinterpret_cast<char*>(block + 1))
+			: 0;
 		usize after_padding = reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(middle_h);
 
 		bool keep_front = padding > MIN_SIZE + sizeof(Header);
@@ -283,6 +287,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 				next_h->pre_off = new_to_next;
 			new_header->align = align;
 		}
+		if (current->used_count == 0) --cache.medium.free_slabs;
 		++current->used_count;
 		return reinterpret_cast<void *>(new_header + 1);
 	}
@@ -320,8 +325,10 @@ bool core::GAlloc::allocMediumRegion(core::Region *last_region, core::ThreadCach
 				last_region->next = r;
 				r->previous = last_region;
 			}
-			if (r->used_count == 0)
+			if (r->used_count == 0) {
 				--sc.free_slabs;
+				++cache.getSizeClass(RegionTable::Entry::Type::Medium).free_slabs;
+			}
 			return true;
 		}
 	}
@@ -348,13 +355,14 @@ bool core::GAlloc::allocMediumRegion(core::Region *last_region, core::ThreadCach
 	new (&new_reg->remote_free) sync::Atomic<void *>{nullptr};
 	new (&new_reg->migration_lock) sync::RWLock{};
 	new_reg->used_count = 0;
+	++cache.medium.free_slabs;
 	new_reg->owning_cache = &cache;
 
 	// the entire region (minus the Region header and one Header) is a single free block
 	new_reg->free_block = reinterpret_cast<Header *>(new_reg + 1);
 	new_reg->free_block->align = 0;
 	new_reg->free_block->pre_off = 0;
-	new_reg->free_block->next_off = Region::MEDIUM_BLOCK_SIZE - sizeof(Region) - sizeof(Header);
+	new_reg->free_block->next_off = Region::MEDIUM_BLOCK_SIZE - sizeof(Region);
 	new_reg->free_block->getFreePtr()->next_free_block = nullptr;
 	new_reg->free_block->getFreePtr()->prev_free_block = nullptr;
 
@@ -623,8 +631,10 @@ bool core::GAlloc::allocSmallRegion(core::Region *last_region, core::ThreadCache
 				last_region->next = r;
 				r->previous = last_region;
 			}
-			if (r->used_count == 0)
+			if (r->used_count == 0) {
 				--sc.free_slabs;
+				++cache.getSizeClass(size).free_slabs;
+			}
 			return true;
 		}
 	}
@@ -652,6 +662,7 @@ bool core::GAlloc::allocSmallRegion(core::Region *last_region, core::ThreadCache
 	new (&new_reg->remote_free) sync::Atomic<void *>{nullptr};
 	new (&new_reg->migration_lock) sync::spin_lock::MCS{};
 	new_reg->used_count = 0;
+	++cache.getSizeClass(size).free_slabs;
 	new_reg->owning_cache = &cache;
 
 	// free_block is not actually a Header* here — it's the first cell pointer.
@@ -691,7 +702,7 @@ bool core::GAlloc::allocSmallRegion(core::Region *last_region, core::ThreadCache
 // Tracks the allocation in os_table so free/realloc can find the size.
 void *core::GAlloc::osAlloc(usize size)
 {
-	size = (size + PAGE_MASK) & ~(PAGE_MASK);
+	size = (size + mlwPageMask()) & ~(mlwPageMask());
 #if defined(MLW_WINDOWS)
 	void *ptr = ::VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if (!ptr)
@@ -944,7 +955,7 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 	// --- OS allocs: try mremap on Linux, else alloc+copy+free ---
 	if (os_region)
 	{
-		usize rounded = (new_size + PAGE_MASK) & ~PAGE_MASK;
+		usize rounded = (new_size + mlwPageMask()) & ~mlwPageMask();
 
 		// TODO maby not remove and keep index??
 		sync::Lock l{os_lock};
@@ -1091,12 +1102,12 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 core::RegionTable::RegionTable()
 {
 #if defined(MLW_WINDOWS)
-	base = static_cast<Entry *>(::VirtualAlloc(nullptr, ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
+	base = static_cast<Entry *>(::VirtualAlloc(nullptr, mlwAllocGranularity(), MEM_RESERVE, PAGE_READWRITE));
 	if (!base)
 	{
 		panic_mem("failed to reserve region table memory");
 	}
-	void *committed = ::VirtualAlloc(base, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
+	void *committed = ::VirtualAlloc(base, mlwPageSize(), MEM_COMMIT, PAGE_READWRITE);
 	if (!committed)
 	{
 		::VirtualFree(base, 0, MEM_RELEASE);
@@ -1104,13 +1115,13 @@ core::RegionTable::RegionTable()
 		panic_mem("failed to commit region table memory");
 	}
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	base = static_cast<Entry *>(::mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	base = static_cast<Entry *>(::mmap(nullptr, mlwPageSize(), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
 	if (base == MAP_FAILED)
 	{
 		panic_mem("failed to mmap region table memory");
 	}
 #endif
-	capacity = static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+	capacity = static_cast<index_t>(mlwPageSize()) / sizeof(Entry);
 }
 
 core::RegionTable::~RegionTable()
@@ -1121,12 +1132,12 @@ core::RegionTable::~RegionTable()
 core::OSTable::OSTable()
 {
 #if defined(MLW_WINDOWS)
-	base = static_cast<Entry *>(::VirtualAlloc(nullptr, ALLOC_GRANULARITY, MEM_RESERVE, PAGE_READWRITE));
+	base = static_cast<Entry *>(::VirtualAlloc(nullptr, mlwAllocGranularity(), MEM_RESERVE, PAGE_READWRITE));
 	if (!base)
 	{
 		panic_mem("failed to reserve region table memory");
 	}
-	void *committed = ::VirtualAlloc(base, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
+	void *committed = ::VirtualAlloc(base, mlwPageSize(), MEM_COMMIT, PAGE_READWRITE);
 	if (!committed)
 	{
 		::VirtualFree(base, 0, MEM_RELEASE);
@@ -1134,13 +1145,13 @@ core::OSTable::OSTable()
 		panic_mem("failed to commit region table memory");
 	}
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	base = static_cast<Entry *>(::mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	base = static_cast<Entry *>(::mmap(nullptr, mlwPageSize(), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
 	if (base == MAP_FAILED)
 	{
-		panic("failed to mmap region table memory");
+		panic_mem("failed to mmap region table memory");
 	}
 #endif
-	capacity = static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+	capacity = static_cast<index_t>(mlwPageSize()) / sizeof(Entry);
 }
 
 core::OSTable::~OSTable()
@@ -1288,14 +1299,14 @@ bool core::OSTable::insert(Entry &&e)
 bool core::RegionTable::grow()
 {
 #if defined(MLW_WINDOWS)
-	if ((capacity * sizeof(Entry) & GRAN_MASK) == 0)
+	if ((capacity * sizeof(Entry) & mlwGranMask()) == 0)
 	{
 		// hit a 64 KB granularity boundary — need a new reservation
-		usize new_reserve = ((capacity * sizeof(Entry) >> GRAN_SHIFT) + 1) * ALLOC_GRANULARITY;
+		usize new_reserve = ((capacity * sizeof(Entry) >> mlwGranShift()) + 1) * mlwAllocGranularity();
 		Entry *new_ptr = static_cast<Entry *>(::VirtualAlloc(nullptr, new_reserve, MEM_RESERVE, PAGE_READWRITE));
 		if (!new_ptr)
 			return false;
-		if (!::VirtualAlloc(new_ptr, capacity * sizeof(Entry) + PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+		if (!::VirtualAlloc(new_ptr, capacity * sizeof(Entry) + mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
 		{
 			::VirtualFree(new_ptr, 0, MEM_RELEASE);
 			return false;
@@ -1309,18 +1320,18 @@ bool core::RegionTable::grow()
 	else
 	{
 		// still within the current reservation — just commit another page
-		if (!::VirtualAlloc(reinterpret_cast<char *>(base) + capacity * sizeof(Entry), PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+		if (!::VirtualAlloc(reinterpret_cast<char *>(base) + capacity * sizeof(Entry), mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
 			return false;
 	}
-	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+	capacity += static_cast<index_t>(mlwPageSize()) / sizeof(Entry);
 	return true;
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	Entry *new_ptr = static_cast<Entry *>(::mremap(base, capacity * sizeof(Entry), capacity * sizeof(Entry) + PAGE_SIZE, MREMAP_MAYMOVE));
+	Entry *new_ptr = static_cast<Entry *>(::mremap(base, capacity * sizeof(Entry), capacity * sizeof(Entry) + mlwPageSize(), MREMAP_MAYMOVE));
 	if (new_ptr == MAP_FAILED)
 		return false;
 	new_ptr = MLW_ASSUME_ALIGNED(new_ptr, 4096);
 	base = new_ptr;
-	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+	capacity += static_cast<index_t>(mlwPageSize()) / sizeof(Entry);
 	return true;
 #endif
 }
@@ -1328,13 +1339,13 @@ bool core::RegionTable::grow()
 bool core::OSTable::grow()
 {
 #if defined(MLW_WINDOWS)
-	if ((capacity * sizeof(Entry) & GRAN_MASK) == 0)
+	if ((capacity * sizeof(Entry) & mlwGranMask()) == 0)
 	{
-		usize new_reserve = ((capacity * sizeof(Entry) >> GRAN_SHIFT) + 1) * ALLOC_GRANULARITY;
+		usize new_reserve = ((capacity * sizeof(Entry) >> mlwGranShift()) + 1) * mlwAllocGranularity();
 		Entry *new_ptr = static_cast<Entry *>(::VirtualAlloc(nullptr, new_reserve, MEM_RESERVE, PAGE_READWRITE));
 		if (!new_ptr)
 			return false;
-		if (!::VirtualAlloc(new_ptr, capacity * sizeof(Entry) + PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+		if (!::VirtualAlloc(new_ptr, capacity * sizeof(Entry) + mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
 		{
 			::VirtualFree(new_ptr, 0, MEM_RELEASE);
 			return false;
@@ -1347,18 +1358,18 @@ bool core::OSTable::grow()
 	}
 	else
 	{
-		if (!::VirtualAlloc(reinterpret_cast<char *>(base) + capacity * sizeof(Entry), PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+		if (!::VirtualAlloc(reinterpret_cast<char *>(base) + capacity * sizeof(Entry), mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
 			return false;
 	}
-	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+	capacity += static_cast<index_t>(mlwPageSize()) / sizeof(Entry);
 	return true;
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	Entry *new_ptr = static_cast<Entry *>(::mremap(base, capacity * sizeof(Entry), capacity * sizeof(Entry) + PAGE_SIZE, MREMAP_MAYMOVE));
+	Entry *new_ptr = static_cast<Entry *>(::mremap(base, capacity * sizeof(Entry), capacity * sizeof(Entry) + mlwPageSize(), MREMAP_MAYMOVE));
 	if (new_ptr == MAP_FAILED)
 		return false;
 	new_ptr = MLW_ASSUME_ALIGNED(new_ptr, 4096);
 	base = new_ptr;
-	capacity += static_cast<index_t>(PAGE_SIZE) / sizeof(Entry);
+	capacity += static_cast<index_t>(mlwPageSize()) / sizeof(Entry);
 	return true;
 #endif
 }
