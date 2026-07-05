@@ -1,10 +1,11 @@
 #include <core/thread/spinlock.h>
 #include <core/thread/mutex.h>
 #include <core/thread/candvar.h>
+#include <core/variant.h>
 
 using namespace core::sync;
 
-
+using a_lot_of_types = core::Variant<int32, int64, float, double, char, bool, core::CStr, core::Optional<int>, core::Optional<float>, core::Optional<double>, core::Optional<char>, core::Optional<bool>, core::Optional<core::CStr>>;
 
 void testCondVar() {
     // test 1: predicate already true, should not block
@@ -149,5 +150,8 @@ int mallowMain() {
 
     testCondVar();
     numeric_limits_test();
+
+	a_lot_of_types var = static_cast<int64>(42);
+    println("{}", var);
     return 0;
 }

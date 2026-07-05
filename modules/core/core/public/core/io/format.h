@@ -17,18 +17,41 @@ namespace core
         { value.format(buffer) } -> same_as<void>;
     };
 
+    struct Sink
+    {
+        void *ctx;
+        void (*append_str)(void *, const CStr &);
+        void (*append_chr)(void *, char);
+
+        inline void append(const CStr &str) { append_str(ctx, str); }
+        inline void append(char c) { append_chr(ctx, c); }
+    };
+
+    template <FormatBuffer Buffer>
+    MLW_FORCE_INLINE Sink makeSink(Buffer &b)
+    {
+        return Sink{
+            &b,
+            [](void *p, const CStr &s)
+            { static_cast<Buffer *>(p)->append(s); },
+            [](void *p, char c)
+            { static_cast<Buffer *>(p)->append(c); },
+        };
+    }
+
     // remove the buffer and just use formateble???
-template <typename T, typename Buffer>
-concept FormattableValue =
-    is_array_v<remove_const_t<T>> ||
-    is_same_v<remove_const_t<T>, CStr> ||
-    is_same_v<remove_const_t<T>, const char *> ||
-    is_same_v<remove_const_t<T>, char> ||
-    is_bool_v<remove_const_t<T>> ||
-    is_integer_v<remove_const_t<T>> ||
-    is_float_v<remove_const_t<T>> ||
-    is_pointer_v<remove_const_t<T>> ||
-    Formattable<T, Buffer>;
+    template <typename T, typename Buffer>
+    concept FormattableValue =
+        is_array_v<remove_const_t<T>> ||
+        is_same_v<remove_const_t<T>, CStr> ||
+        is_same_v<remove_const_t<T>, const char *> ||
+        is_same_v<remove_const_t<T>, char> ||
+        is_bool_v<remove_const_t<T>> ||
+        is_integer_v<remove_const_t<T>> ||
+        is_float_v<remove_const_t<T>> ||
+        is_pointer_v<remove_const_t<T>> ||
+        Formattable<T, Buffer> ||
+        Formattable<T, Sink>;
 
     struct FormatBufferType
     {
@@ -156,7 +179,7 @@ concept FormattableValue =
             {
                 // use scientific notation
                 int64 exponent = static_cast<int64>(mlwFloor(mlwLog10(value)));
-                value /= mlwPow(10.0,static_cast<f64>(exponent));
+                value /= mlwPow(10.0, static_cast<f64>(exponent));
 
                 if (value >= 10.0)
                 {
@@ -290,6 +313,11 @@ concept FormattableValue =
             else if constexpr (Formattable<T, Buffer>)
             {
                 value.format(buffer);
+            }
+            else if constexpr (Formattable<T, Sink>)
+            {
+                Sink s = makeSink(buffer); // can only format into a Sink -> wrap once
+                value.format(s);
             }
             else if constexpr (is_pointer_v<U>)
             {

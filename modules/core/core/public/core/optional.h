@@ -5,9 +5,9 @@
 namespace core
 {
 
-    inline constexpr struct InPlace
+    inline constexpr struct OptionalInPlace
     {
-    } in_place{};
+    } optional_in_place{};
 
     // forward declare all specializations
     template <typename T>
@@ -40,8 +40,8 @@ namespace core
         alignas(T) char storage[sizeof(T)];
         bool has_value = false;
 
-        T *ptr() { return reinterpret_cast<T *>(&storage); }
-        const T *ptr() const { return reinterpret_cast<const T *>(&storage); }
+        T* ptr() { return MLW_LAUNDER(reinterpret_cast<T*>(&storage)); }
+        const T* ptr() const { return MLW_LAUNDER(reinterpret_cast<const T*>(&storage)); }
 
     public:
         // ── constructors ─────────────────────────────────────────────────
@@ -51,7 +51,7 @@ namespace core
 
         // then in Optional:
         template <typename... Args>
-        Optional(InPlace, Args &&...args)
+        Optional(OptionalInPlace, Args &&...args)
             requires core::is_constructible_v<T, Args...>
             : has_value(true)
         {
@@ -148,7 +148,7 @@ namespace core
         T &emplace(Args &&...args)
         {
             reset();
-            new (storage) T{forward<Args>(args)...};
+            new (storage) T(forward<Args>(args)...);
             has_value = true;
             return *ptr();
         }

@@ -93,6 +93,9 @@ template <typename T> struct remove_ref<T&&> { using type = T; };
 template <typename T>
 using remove_ref_t = typename remove_ref<T>::type;
 
+template <typename T>
+constexpr bool is_reference_v = !is_same_v<remove_ref_t<T>, T>;
+
 
 // trivially copyable — compiler builtin, no way to implement without it
 template<typename T>

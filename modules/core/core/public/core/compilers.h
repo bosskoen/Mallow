@@ -16,6 +16,17 @@
 
 #endif
 
+#if defined(MLW_GCC) || defined(MLW_CLANG)
+#define MLW_LAUNDER(ptr) __builtin_launder(ptr)
+#elif defined(MLW_MSVC)
+// launder emits no code anywhere; it only restrains optimizer assumptions about
+// object identity after placement-new. MSVC doesn't make those assumptions
+// (its own std::launder is identity), so identity is correct here — not a stopgap.
+// Do NOT substitute a fence/NOP: those are CPU memory barriers, orthogonal to this.
+#define MLW_LAUNDER(ptr) (ptr)
+#endif
+
+
 #if defined(MLW_MSVC)
 static __forceinline usize mlw_ctz64(uint64 x)
 {

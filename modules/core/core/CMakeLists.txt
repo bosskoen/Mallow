@@ -42,6 +42,8 @@ target_sources(core
         public/core/thread/rwlock.h
         public/core/memory/galloc.h
         private/galloc.cpp
+        public/core/thread/thread.h
+        public/core/variant.h
 )
 
 target_include_directories(core
