@@ -153,5 +153,9 @@ int mallowMain() {
 
 	a_lot_of_types var = static_cast<int64>(42);
     println("{}", var);
+    sint asf = 2;
+
+    sint t = ((l.tryLock() ? --asf : asf), (asf)); 
+
     return 0;
 }

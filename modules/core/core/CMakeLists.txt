@@ -44,6 +44,8 @@ target_sources(core
         private/galloc.cpp
         public/core/thread/thread.h
         public/core/variant.h
+        public/core/error.h
+        public/core/result.h
 )
 
 target_include_directories(core
