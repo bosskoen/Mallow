@@ -1,6 +1,6 @@
 #pragma once
-#include "../compilers.h"
 #include "../traits.h"
+#include "bit.h"
 
 namespace
 {
@@ -38,8 +38,7 @@ namespace core
     MLW_FORCE_INLINE bool mlwIsInf(f64 value)
     {
 #if defined(MLW_MSVC)
-        uint64 bits;
-        mlwMemcpy(&bits, &value, sizeof(bits));
+        uint64 bits = mlwBitCast<uint64>(value);
         return (bits & 0x7FFFFFFFFFFFFFFF) == 0x7FF0000000000000;
 #else
         return isinf(value) != 0;
@@ -48,8 +47,7 @@ namespace core
     MLW_FORCE_INLINE bool mlwIsInf(f32 value)
     {
 #if defined(MLW_MSVC)
-        uint32 bits;
-        mlwMemcpy(&bits, &value, sizeof(bits));
+        uint32 bits = mlwBitCast<uint32>(value);
         return (bits & 0x7FFFFFFF) == 0x7F800000;
 #else
         return isinff(value) != 0;

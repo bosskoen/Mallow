@@ -1,6 +1,5 @@
 #pragma once
 #include "../c_string.h"
-#include "../libc/mem.h"
 #include "../libc/math.h"
 
 namespace core
@@ -63,25 +62,9 @@ namespace core
         index_t len;
         index_t capacity;
 
-        inline void append(const CStr &str)
-        {
-            while (len + str.len > capacity)
-            {
-                realocate();
-            }
-            // copy str to buffer
-            mlwMemcpy(ptr + len, str.ptr, str.len);
-            len += str.len;
-        }
-        inline void append(const uint8 value)
-        {
-            while (len + 1 > capacity)
-            {
-                realocate();
-            }
-            ptr[len] = value;
-            len += 1;
-        }
+        void append(const CStr &str);
+
+        void append(const uint8 value);
     };
 
     namespace detail

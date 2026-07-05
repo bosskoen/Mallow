@@ -1,19 +1,10 @@
 #pragma once
 
 #include "libc/str.h"
+#include "compilers.h"
 
 namespace core
 {
-    // namespace detail
-    // {
-    //     constexpr index_t c_strLen(const char *ptr)
-    //     {
-    //         index_t len = 0;
-    //         while (ptr[len] != '\0')
-    //             len++;
-    //         return len;
-    //     }
-    // }
     struct CStr
     {
         const char *ptr;

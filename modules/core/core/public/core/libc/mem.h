@@ -1,13 +1,7 @@
 #pragma once
-#include "../compilers.h"
-#include <cstdlib>
 
-namespace
-{
-    extern "C" void* memcpy(void* __restrict dst, const void* __restrict src, usize n);
-    extern "C" void* memset(void* dst, int value, usize n);
+#include "../memory/galloc.h"
 
-}
 
 namespace core
 {
@@ -25,79 +19,27 @@ namespace core
     }
 
 
-    MLW_FORCE_INLINE void *mlwMemcpy(void *__restrict dst, const void *__restrict src, usize n)
-    {
-        // u8 *d = static_cast<u8 *>(dst);
-        // const u8 *s = static_cast<const u8 *>(src);
-
-        // constexpr usize POINTER_MASK = sizeof(usize) - 1;
-        // constexpr usize POINTER_SIZE = sizeof(usize);
-
-        // usize head = (POINTER_SIZE - (reinterpret_cast<usize>(d) & POINTER_MASK)) & POINTER_MASK;
-        // head = head < n ? head : n; // clamp to n in case n is tiny
-
-        // for (usize i = 0; i < head; ++i)
-        //     d[i] = s[i];
-
-        // d += head;
-        // s += head;
-        // n -= head;
-
-        // usize words = n / POINTER_SIZE;
-
-        // usize *dw = reinterpret_cast<usize *>(d);
-        // const usize *sw = reinterpret_cast<const usize *>(s);
-
-        // for (usize i = 0; i < words; ++i)
-        //     dw[i] = sw[i];
-
-        // d += words * POINTER_SIZE;
-        // s += words * POINTER_SIZE;
-        // n -= words * POINTER_SIZE;
-
-        // for (usize i = 0; i < n; ++i)
-        //     d[i] = s[i];
-
-        // return dst;
-        return ::memcpy(dst, src, n);
-    }
-
-    MLW_FORCE_INLINE void *mlwMemset(void *dst, uint8 value, usize n)
-    {
-        return ::memset(dst, value, n);
-    }
+    void* mlwMemcpy(void* d, const void* s, usize n);
+    void* mlwMemset(void* d, int v, usize n);
+    void* mlwMemmove(void* d, const void* s, usize n);
+    int   mlwMemcmp(const void* a, const void* b, usize n);
 
     MLW_FORCE_INLINE void *mlwAlignedAlloc(usize size, usize alignment)
     {
-#if defined(MLW_WINDOWS)
-        return ::_aligned_malloc(size, alignment);
-#else
-        usize aligned_size = (size + alignment - 1) & ~(static_cast<usize>(alignment) - 1);
-        return ::aligned_alloc(alignment, aligned_size);
-#endif
+        return mlw_g_alloc.alignAlloc(size, alignment);
     }
-
-    MLW_FORCE_INLINE void mlwAlignedFree(void *ptr)
-    {
-#if defined(MLW_WINDOWS)
-        ::_aligned_free(ptr);
-#else
-        ::free(ptr);
-#endif
-    }
-    // void *mlwAlignedRealloc(void *ptr, usize newSize);
 
     MLW_FORCE_INLINE void *mlwMalloc(usize size)
     {
-        return malloc(size);
+        return mlw_g_alloc.alloc(size);
     }
     MLW_FORCE_INLINE void mlwFree(void *ptr)
     {
-        free(ptr);
+        mlw_g_alloc.free(ptr);
     }
     MLW_FORCE_INLINE void *mlwRealloc(void *ptr, usize newSize)
     {
-        return realloc(ptr, newSize);
+        return mlw_g_alloc.realloc(ptr, newSize);
     }
 }
 

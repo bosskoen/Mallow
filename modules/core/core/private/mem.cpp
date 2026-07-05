@@ -1,5 +1,7 @@
 #include "libc/mem.h"
 #include "libc/process.h"
+#include "libc/str.h"
+
 #if defined(MLW_WINDOWS)
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)

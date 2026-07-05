@@ -46,7 +46,12 @@ target_sources(core
         public/core/variant.h
         public/core/error.h
         public/core/result.h
+        public/core/bit.h
+        private/freestanding.cpp
 )
+
+set_source_files_properties(freestanding_rt.cpp PROPERTIES COMPILE_FLAGS
+    "$<IF:$<CXX_COMPILER_ID:MSVC>,/Oi-,-fno-builtin -fno-tree-loop-distribute-patterns>")
 
 target_include_directories(core
     PUBLIC

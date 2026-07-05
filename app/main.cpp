@@ -2,6 +2,7 @@
 #include <core/thread/mutex.h>
 #include <core/thread/candvar.h>
 #include <core/variant.h>
+#include <core/libc/mem.h>
 
 using namespace core::sync;
 
@@ -154,8 +155,6 @@ int mallowMain() {
 	a_lot_of_types var = static_cast<int64>(42);
     println("{}", var);
     sint asf = 2;
-
-    sint t = ((l.tryLock() ? --asf : asf), (asf)); 
 
     return 0;
 }

@@ -1,10 +1,8 @@
 #pragma once
 #include "../compilers.h"
 
-namespace {
-    extern "C" MLW_NO_RETURN void exit(int status);
-    extern "C" MLW_NO_RETURN void _Exit(int status);
-}
+#include <stdlib.h>
+
 
 namespace core{
     const extern thread_local uint32 thread_id;

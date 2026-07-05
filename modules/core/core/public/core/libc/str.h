@@ -1,14 +1,7 @@
 #pragma once
-#include "../compilers.h"
-
-namespace
-{
-    extern "C" usize strlen(const char *str);
-}
+#include "../typedef.h"
 
 namespace core
 {
-    MLW_FORCE_INLINE usize mlwStrlen(const char *str){
-        return strlen(str);
-    }
+    usize mlwStrlen(const char *str);
 } // namespace core

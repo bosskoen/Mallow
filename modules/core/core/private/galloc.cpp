@@ -1,5 +1,7 @@
 #include "memory/galloc.h"
 
+#include "libc/mem.h"
+
 #if defined(MLW_WINDOWS)
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)

@@ -1,2 +1,5 @@
 build/
 generated/
+html/
+latex/
+Doxyfile
