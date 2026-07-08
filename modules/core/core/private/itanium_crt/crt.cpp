@@ -95,11 +95,11 @@ namespace {
     core::sync::Mutex g_guard_lock{};
     core::sync::CondVar g_guard_cv{};
 
-    inline unsigned char& guard_done(u64* g)    { return reinterpret_cast<unsigned char*>(g)[0]; }
-    inline unsigned char& guard_pending(u64* g) { return reinterpret_cast<unsigned char*>(g)[1]; }
+    inline unsigned char& guard_done(uint64* g)    { return reinterpret_cast<unsigned char*>(g)[0]; }
+    inline unsigned char& guard_pending(uint64* g) { return reinterpret_cast<unsigned char*>(g)[1]; }
 }
 
-extern "C" int __cxa_guard_acquire(u64* g) {
+extern "C" int __cxa_guard_acquire(uint64* g) {
     core::sync::Lock l{g_guard_lock};
     // wait out any other thread currently constructing THIS guard
     g_guard_cv.wait(l, [g]() -> bool { return guard_pending(g) == 0; });
@@ -108,7 +108,7 @@ extern "C" int __cxa_guard_acquire(u64* g) {
     return 1;                                 // caller constructs
 }
 
-extern "C" void __cxa_guard_release(u64* g) {
+extern "C" void __cxa_guard_release(uint64* g) {
     core::sync::Lock l{g_guard_lock};
     // publish with release so the compiler's lock-free byte-0 read sees it
     // (byte store under lock + wake; on weak archs the wake path carries the
@@ -123,7 +123,7 @@ extern "C" void __cxa_guard_release(u64* g) {
     g_guard_cv.wakeAll();
 }
 
-extern "C" void __cxa_guard_abort(u64* g) {
+extern "C" void __cxa_guard_abort(uint64* g) {
     core::sync::Lock l{g_guard_lock};
     guard_pending(g) = 0;                     // reset so another thread retries
     l.unlock();
