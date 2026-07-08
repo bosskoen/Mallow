@@ -12,7 +12,7 @@
 
 
 namespace core {
-	static thread_local alignas(ThreadCache) uint8 tc_storage[sizeof(ThreadCache)]{0};
+	alignas(ThreadCache) static thread_local uint8 tc_storage[sizeof(ThreadCache)]{0};
 	static thread_local bool tc_constructed  = false; 
 
 	static ThreadCache& getThreadCache() { return *reinterpret_cast<ThreadCache*>(tc_storage); }

@@ -13,6 +13,8 @@
 #include "libc/math.h"
 #include "thread/atomic.h"
 
+#include "crt_internals.h"
+
 static core::sync::Atomic<uint32> thread_id_counter{ 0 };
 const thread_local uint32 core::thread_id = thread_id_counter.fetchAdd(1, core::sync::MemoryOrder::Relaxed);
 

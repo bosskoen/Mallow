@@ -2,10 +2,7 @@
 #include "macro.h"
 #include "memory/galloc.h"
 
-namespace core::detail
-{
-    void mlw__crt_distorty_format_buffer();
-}
+#include "../crt_internals.h"
 
 extern "C" {
 
@@ -105,16 +102,16 @@ static void WINAPI mlw_tls_callback(PVOID h, DWORD reason, LPVOID r) {
     if (reason == DLL_THREAD_ATTACH)
         __dyn_tls_init(h, DLL_THREAD_ATTACH, r);
     else if (reason == DLL_THREAD_DETACH) {
-        run_tls_dtors();
+        crt::run_thread_local_dtors();
         core::ThreadCache::mlw__crt_distroy_tc_storage();
-        core::detail::mlw__crt_distorty_format_buffer();
+        core::detail::mlw__crt_distroy_format_buffer();
     }
     else if (reason == DLL_PROCESS_DETACH) {
-        run_tls_dtors();
-        runAtExit();
+        crt::run_thread_local_dtors();
+        crt::run_global_dtors();
         core::ThreadCache::mlw__crt_distroy_tc_storage();
         //run memory check maby
-        core::detail::mlw__crt_distorty_format_buffer();
+        core::detail::mlw__crt_distroy_format_buffer();
     }
 }
 #pragma section(".CRT$XLC", long, read)
@@ -133,3 +130,19 @@ extern const IMAGE_TLS_DIRECTORY64 _tls_used = {
 #pragma const_seg()
 
 } // extern "C"
+
+
+void crt::run_global_ctors(){
+    run_cpp_ctors();
+};
+void crt::run_global_dtors(){
+    runAtExit();
+};
+
+void crt::run_thread_local_dtors(){
+    run_tls_dtors();
+}
+
+void crt::run_thread_local_ctors(){
+    __dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
+}

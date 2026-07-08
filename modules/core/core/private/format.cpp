@@ -10,15 +10,17 @@
 #error "Unsupported platform"
 #endif
 
+
+#include "crt_internals.h"
 namespace core::detail
 {
 
 
 
-	static thread_local alignas(FormatBufferType) uint8 fb_storage[sizeof(FormatBufferType)]{ 0 };
+	alignas(FormatBufferType) static thread_local uint8 fb_storage[sizeof(FormatBufferType)]{ 0 };
 	static thread_local bool fb_constructed = false;
 
-	void mlw__crt_distorty_format_buffer()
+	void mlw__crt_distroy_format_buffer()
 	{
 		if (fb_constructed) {
 			FormatBufferType& buf = *reinterpret_cast<FormatBufferType*>(fb_storage);

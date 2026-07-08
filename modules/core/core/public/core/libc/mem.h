@@ -15,12 +15,6 @@ namespace core
         usize gran_shift;
     } PLATFORM_INFO;
 
-    namespace detail
-    {
-        void mlw__crt_init_platforminf();
-    } // namespace detail
-    
-
 
     void* mlwMemcpy(void* d, const void* s, usize n);
     void* mlwMemset(void* d, int v, usize n);

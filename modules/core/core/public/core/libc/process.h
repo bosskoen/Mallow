@@ -1,9 +1,6 @@
 #pragma once
 #include "../compilers.h"
 
-
-extern "C" int32 __cdecl atexit(void(__cdecl* fn)(void));
-
 namespace core{
     const extern thread_local uint32 thread_id;
 

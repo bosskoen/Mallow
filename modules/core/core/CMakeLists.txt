@@ -51,11 +51,20 @@ target_sources(core
         private/math/log2.cpp
         private/math/pow.cpp
         private/new_imp.cpp
-
-        private/windows_crt/crt.cpp
-        private/windows_crt/init_thread.cpp
+        private/crt_internals.h
 
 )
+
+if(MSVC)
+    target_sources(core PRIVATE
+        private/windows_crt/crt.cpp
+        private/windows_crt/init_thread.cpp
+    )
+else()  # GCC / Clang → Itanium ABI
+    target_sources(core PRIVATE
+        private/itanium_crt/crt.cpp
+    )
+endif()
 
 if(MSVC)
     set_source_files_properties(

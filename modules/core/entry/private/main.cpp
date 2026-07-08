@@ -3,11 +3,7 @@
 #include <core/memory/galloc.h>
 #include <core/libc/mem.h>
 
-#include <Windows.h>
-
-
-extern "C" void WINAPI __dyn_tls_init(PVOID, DWORD, LPVOID);
-extern "C" void run_cpp_ctors();
+#include "core/../../private/crt_internals.h"
 
 extern int32 mallowMain();
 
@@ -16,8 +12,8 @@ extern "C" void mlwStart(){
     new (&core::mlw_g_alloc) core::GAlloc{};
 
     core::ThreadCache::mlw__first_crt_ctor();
-    run_cpp_ctors();
-    __dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
+    crt::run_global_ctors();
+    crt::run_thread_local_ctors();
 
 
     //comand line parsing
