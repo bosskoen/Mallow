@@ -4,7 +4,7 @@
 namespace core
 {
     template <typename To, typename From>
-    MLW_FORCE_INLINE To mlwBitCast(From value)
+    constexpr MLW_FORCE_INLINE To mlwBitCast(From value)
     {
         static_assert(sizeof(To) == sizeof(From));
 

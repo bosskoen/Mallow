@@ -5,18 +5,21 @@
 
 namespace core
 {
+    //no initiolisasion
+    extern struct PlatformInfo {
+        usize page_size;
+        usize page_mask;
+        usize page_shift;
+        usize alloc_granularity;
+        usize gran_mask;
+        usize gran_shift;
+    } PLATFORM_INFO;
+
     namespace detail
     {
-        struct PlatformInfo {
-            usize page_size;
-            usize page_mask;
-            usize page_shift;
-            usize alloc_granularity;
-            usize gran_mask;
-            usize gran_shift;
-        };
-        const PlatformInfo& queryPlatform();
-    }
+        void mlw__crt_init_platforminf();
+    } // namespace detail
+    
 
 
     void* mlwMemcpy(void* d, const void* s, usize n);
@@ -57,37 +60,3 @@ namespace core
 // Runtime lookup:
 //   Windows : SYSTEM_INFO i; GetSystemInfo(&i); i.dwPageSize; i.dwAllocationGranularity;
 //   Unix    : sysconf(_SC_PAGESIZE);
-
-namespace core
-{
-
-        MLW_FORCE_INLINE usize mlwPageSize()
-        {
-            return detail::queryPlatform().page_size;
-        }
-
-        MLW_FORCE_INLINE usize mlwPageMask()
-        {
-            return detail::queryPlatform().page_mask;
-        }
-
-        MLW_FORCE_INLINE usize mlwPageShift()
-        {
-            return detail::queryPlatform().page_shift;
-        }
-
-        MLW_FORCE_INLINE usize mlwAllocGranularity()
-        {
-            return detail::queryPlatform().alloc_granularity;
-        }
-
-        MLW_FORCE_INLINE usize mlwGranMask()
-        {
-            return detail::queryPlatform().gran_mask;
-        }
-
-        MLW_FORCE_INLINE usize mlwGranShift()
-        {
-            return detail::queryPlatform().gran_shift;
-        }
-}

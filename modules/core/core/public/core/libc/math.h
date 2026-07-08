@@ -2,56 +2,39 @@
 #include "../traits.h"
 #include "bit.h"
 
-namespace
-{
-    extern "C" double copysign(double x, double y);
-    extern "C" float copysignf(float x, float y);
-
-#if !defined(MLW_MSVC)
-    extern "C" int isinf(double x);
-    extern "C" int isinff(float x);
-#endif
-
-    extern "C" double pow(double base, double power);
-    extern "C" float powf(float base, float power);
-
-    extern "C" double log2(double x);
-    extern "C" float log2f(float x);
-    extern "C" double log10(double x);
-    extern "C" float log10f(float x);
-
-    extern "C" double floor(double x);
-    extern "C" float floorf(float x);
-}
-
 namespace core
 {
     MLW_FORCE_INLINE f64 mlwCopySign(f64 magnitude, f64 sign)
     {
-        return copysign(magnitude, sign);
+        uint64 valueBits = mlwBitCast<uint64>(magnitude);
+        uint64 signBits = mlwBitCast<uint64>(sign);
+
+        valueBits &= 0x7FFFFFFFFFFFFFFFULL;            // Clear sign bit.
+        valueBits |= signBits & 0x8000000000000000ULL; // Copy sign bit.
+
+        return mlwBitCast<f64>(valueBits);
     }
     MLW_FORCE_INLINE f32 mlwCopySign(f32 magnitude, f32 sign)
     {
-        return copysignf(magnitude, sign);
+        uint32 valueBits = mlwBitCast<uint32>(magnitude);
+        uint32 signBits = mlwBitCast<uint32>(sign);
+
+        valueBits &= 0x7FFFFFFFU;
+        valueBits |= signBits & 0x80000000U;
+
+        return mlwBitCast<f32>(valueBits);
     }
 
     MLW_FORCE_INLINE bool mlwIsInf(f64 value)
     {
-#if defined(MLW_MSVC)
+
         uint64 bits = mlwBitCast<uint64>(value);
         return (bits & 0x7FFFFFFFFFFFFFFF) == 0x7FF0000000000000;
-#else
-        return isinf(value) != 0;
-#endif
     }
     MLW_FORCE_INLINE bool mlwIsInf(f32 value)
     {
-#if defined(MLW_MSVC)
         uint32 bits = mlwBitCast<uint32>(value);
         return (bits & 0x7FFFFFFF) == 0x7F800000;
-#else
-        return isinff(value) != 0;
-#endif
     }
     MLW_FORCE_INLINE bool mlwIsNaN(f64 value)
     {
@@ -69,42 +52,104 @@ namespace core
         return value < min ? min : (value > max ? max : value);
     }
 
-    MLW_FORCE_INLINE f64 mlwPow(f64 base, f64 power)
-    {
-        return pow(base, power);
-    }
+    f64 mlwPow(f64 base, f64 power);
 
-    MLW_FORCE_INLINE f32 mlwPow(f32 base, f32 power)
-    {
-        return powf(base, power);
-    }
+    f32 mlwPow(f32 base, f32 power);
 
-    MLW_FORCE_INLINE f64 mlwLog2(f64 x)
-    {
-        return log2(x);
-    }
-    MLW_FORCE_INLINE f32 mlwLog2(f32 x)
-    {
-        return log2f(x);
-    }
-    MLW_FORCE_INLINE f64 mlwLog10(f64 x)
-    {
-        return log10(x);
-    }
-    MLW_FORCE_INLINE f32 mlwLog10(f32 x)
-    {
-        return log10f(x);
-    }
+    f64 mlwLog2(f64 x);
+    f32 mlwLog2(f32 x);
 
+    MLW_FORCE_INLINE f64 mlwLoge(f64 x) { return mlwLog2(x) * 0x1.62e42fefa39efp-1; } // * ln2
+    MLW_FORCE_INLINE f32 mlwLoge(f32 x) { return (f32)(mlwLog2((f64)x) * 0x1.62e42fefa39efp-1); }
+
+    MLW_FORCE_INLINE f64 mlwLog10(f64 x) { return mlwLog2(x) * 0x1.34413509f79ffp-2; } // * log10(2)
+    MLW_FORCE_INLINE f32 mlwLog10(f32 x) { return (f32)(mlwLog2((f64)x) * 0x1.34413509f79ffp-2); }
     MLW_FORCE_INLINE f64 mlwFloor(f64 x)
     {
-        return floor(x);
+        uint64 bits = mlwBitCast<uint64>(x);
+
+        bool sign = bits >> 63;
+        uint32 exp = (bits >> 52) & 0x7FF;
+
+        // NaN or ±Inf
+        if (exp == 0x7FF)
+            return x;
+
+        int32 e = static_cast<int32>(exp) - 1023;
+
+        // |x| < 1
+        if (e < 0)
+        {
+            // ±0
+            if ((bits << 1) == 0)
+                return x;
+
+            return sign ? -1.0 : 0.0;
+        }
+
+        // Already integral
+        if (e >= 52)
+            return x;
+
+        uint64 mask = (1ULL << (52 - e)) - 1;
+
+        // Already an integer
+        if ((bits & mask) == 0)
+            return x;
+
+        bits &= ~mask;
+
+        f64 result = mlwBitCast<f64>(bits);
+
+        if (sign)
+            result -= 1.0;
+
+        return result;
     }
+
     MLW_FORCE_INLINE f32 mlwFloor(f32 x)
     {
-        return floorf(x);
+        uint32 bits = mlwBitCast<uint32>(x);
+
+        bool sign = bits >> 31;
+        uint32 exp = (bits >> 23) & 0xFF;
+
+        // NaN or ±Inf
+        if (exp == 0xFF)
+            return x;
+
+        int32 e = static_cast<int32>(exp) - 127;
+
+        // |x| < 1
+        if (e < 0)
+        {
+            // ±0
+            if ((bits << 1) == 0)
+                return x;
+
+            return sign ? -1.0f : 0.0f;
+        }
+
+        // Already integral
+        if (e >= 23)
+            return x;
+
+        uint32 mask = (1u << (23 - e)) - 1;
+
+        // Already an integer
+        if ((bits & mask) == 0)
+            return x;
+
+        bits &= ~mask;
+
+        f32 result = mlwBitCast<f32>(bits);
+
+        if (sign)
+            result -= 1.0f;
+
+        return result;
     }
-    
+
     template <typename T>
         requires is_float_v<T> || is_integer_v<T>
     MLW_FORCE_INLINE T mlwMin(T a, T b)

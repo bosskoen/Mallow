@@ -69,7 +69,7 @@ namespace core
 
     namespace detail
     {
-
+        //void mlw__crt_distorty_format_buffer();
         FormatBufferType &getFormatBuffer();
 
         template <FormatBuffer Buffer>

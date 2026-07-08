@@ -1,12 +1,13 @@
 
-#include "libc./str.h"
+#include "libc/str.h"
 #include "libc/mem.h"
+
 
 #ifdef MLW_MSVC
 #pragma function(memcpy, memset, strlen)   // file scope, before the definitions
 #endif
 
-
+extern "C" int _fltused = 0;
 
 extern "C" usize strlen(const char *str)
 {
@@ -132,3 +133,5 @@ namespace core {
     int   mlwMemcmp(const void* a, const void* b, usize n){ return memcmp(a, b, n); }
 }
 #endif
+
+

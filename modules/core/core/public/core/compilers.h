@@ -21,11 +21,19 @@
 #elif defined(MLW_MSVC)
 // launder emits no code anywhere; it only restrains optimizer assumptions about
 // object identity after placement-new. MSVC doesn't make those assumptions
-// (its own std::launder is identity), so identity is correct here — not a stopgap.
+// (its own std::launder is identity), so identity is correct here ï¿½ not a stopgap.
 // Do NOT substitute a fence/NOP: those are CPU memory barriers, orthogonal to this.
 #define MLW_LAUNDER(ptr) (ptr)
 #endif
 
+
+#if defined(MLW_GCC) || defined(MLW_CLANG)
+    #define MLW_LIKELY(x)   (__builtin_expect(!!(x), 1))
+    #define MLW_UNLIKELY(x) (__builtin_expect(!!(x), 0))
+#else                       // MSVC and anything else: no-op, still correct
+    #define MLW_LIKELY(x)   (x)
+    #define MLW_UNLIKELY(x) (x)
+#endif
 
 #if defined(MLW_MSVC)
 static __forceinline usize mlw_ctz64(uint64 x)
@@ -161,4 +169,14 @@ extern "C" void __dmb(unsigned int);
 #define MLW_DEBUGBREAK()
 #endif
 
-MLW_FORCE_INLINE void* operator new(decltype(sizeof(0)), void* ptr) { return ptr; }
+#if defined(MLW_MSVC)
+#define MLW_UNREACHABLE() __assume(0)
+#elif defined(MLW_GCC) || defined(MLW_CLANG)
+#define MLW_UNREACHABLE() __builtin_unreachable()
+#else
+#define MLW_UNREACHABLE() ((void)0)
+#endif
+
+MLW_FORCE_INLINE void* operator new(decltype(sizeof(0)), void* ptr) noexcept { return ptr; }
+
+void operator delete(void*, usize) noexcept;

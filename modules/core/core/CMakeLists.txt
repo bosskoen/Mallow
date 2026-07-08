@@ -48,10 +48,28 @@ target_sources(core
         public/core/result.h
         public/core/bit.h
         private/freestanding.cpp
+        private/math/log2.cpp
+        private/math/pow.cpp
+        private/new_imp.cpp
+
+        private/windows_crt/crt.cpp
+        private/windows_crt/init_thread.cpp
+
 )
 
-set_source_files_properties(freestanding_rt.cpp PROPERTIES COMPILE_FLAGS
-    "$<IF:$<CXX_COMPILER_ID:MSVC>,/Oi-,-fno-builtin -fno-tree-loop-distribute-patterns>")
+if(MSVC)
+    set_source_files_properties(
+        private/freestanding.cpp
+        PROPERTIES
+        COMPILE_OPTIONS "/Oi-"
+    )
+else()
+    set_source_files_properties(
+        private/freestanding.cpp
+        PROPERTIES
+        COMPILE_OPTIONS "-fno-builtin;-fno-tree-loop-distribute-patterns"
+    )
+endif()
 
 target_include_directories(core
     PUBLIC

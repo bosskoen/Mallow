@@ -1,19 +1,16 @@
 #pragma once
 #include "../compilers.h"
 
-#include <stdlib.h>
 
+extern "C" int32 __cdecl atexit(void(__cdecl* fn)(void));
 
 namespace core{
     const extern thread_local uint32 thread_id;
 
-    MLW_NO_RETURN MLW_FORCE_INLINE void mlwExit(int32 status)
-    {
-        ::exit(status);
-    }
+	//UB if called from a thread that is not the main thread, or if called after the main thread has exited.
+    MLW_NO_RETURN void mlwExit(int32 status);
 
-    MLW_NO_RETURN MLW_FORCE_INLINE void mlwTerminate(int32 status)
-    {
-        ::_Exit(status);
-    }
+
+   MLW_NO_RETURN void mlwTerminate(int32 status);
+
 }

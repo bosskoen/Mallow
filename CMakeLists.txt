@@ -28,24 +28,26 @@ else()
     add_compile_options(-fno-rtti -fno-exceptions)
 endif()
 
-# NOTE: -fno-builtin does NOT stop the compiler emitting memcpy/memset for
-# struct copies / aggregate init — you still must provide the mem four.
-# It only stops library-name recognition. __builtin_* (prefixed) still work.
 if(MLW_NO_BUILTINS AND NOT MSVC)
     add_compile_options(-fno-builtin)
 endif()
 
 if(MLW_NO_STDLIB)
     if(MSVC)
+        # strip /RTC (Debug-only, needs _RTC_* CRT symbols we don't have)
+        string(REGEX REPLACE "/RTC[1csu]*" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+        # stop CMake injecting /MD or /MDd
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "")
+
         add_link_options(/NODEFAULTLIB /ENTRY:mlwStart /SUBSYSTEM:CONSOLE)
-        add_compile_options(/GS-)                 # no CRT stack cookie
+        link_libraries(kernel32)
+        add_compile_options(/GS-)
     else()
         add_compile_options(-ffreestanding -fno-stack-protector)
-        add_link_options(-nostdlib -static -no-pie)   # LINK options
-        link_libraries(gcc)                        # compiler-support routines
+        add_link_options(-nostdlib -static -no-pie)
+        link_libraries(gcc)
     endif()
     message(STATUS "stdlib: none (you provide _start)")
-
 elseif(MLW_NO_DEFAULT_LIBS)
     if(MSVC)
         add_link_options(/NODEFAULTLIB:msvcprt.lib /NODEFAULTLIB:libcpmt.lib
@@ -72,6 +74,11 @@ endif()
 if(MSVC AND NOT MLW_NO_STDLIB)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
+
+# if(MLW_NO_STDLIB AND MSVC)
+#     add_compile_options(/Zc:threadSafeInit-)
+# endif()
+
 
 add_subdirectory(modules/core/core)
 

@@ -10,11 +10,12 @@ else()
     message(WARNING "MLW: unknown platform")
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_definitions(MLW_RELEASE)
-else()
-    add_compile_definitions(MLW_DEBUG)
-endif()
+add_compile_definitions(
+    $<$<CONFIG:Debug>:MLW_DEBUG>
+    $<$<CONFIG:Release>:MLW_RELEASE>
+    $<$<CONFIG:RelWithDebInfo>:MLW_RELEASE>
+    $<$<CONFIG:MinSizeRel>:MLW_RELEASE>
+)
 
 if(MSVC)
     add_compile_definitions(MLW_MSVC)

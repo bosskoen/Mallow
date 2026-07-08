@@ -21,6 +21,7 @@ namespace core::sync
                       "Lock<T> requires T to satisfy Lockable, "
                       "or provide an explicit specialization like Lock<MCS>");
 
+
     private:
         T &lock_obj;
         bool locked = false;

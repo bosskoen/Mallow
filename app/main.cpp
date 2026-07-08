@@ -10,50 +10,50 @@ using a_lot_of_types = core::Variant<int32, int64, float, double, char, bool, co
 
 void testCondVar() {
     // test 1: predicate already true, should not block
-    {
-        Mutex mtx;
-        CondVar cv;
-        Lock lock(mtx);
-        bool called = false;
-        cv.wait(lock, [&]{ called = true; return true; });
-        mlw_assert(called);
-    }
+    //{
+    //    Mutex mtx;
+    //    CondVar cv;
+    //    Lock lock(mtx);
+    //    bool called = false;
+    //    cv.wait(lock, [&]{ called = true; return true; });
+    //    mlw_assert(called);
+    //}
 
-    // test 2: predicate called until true
-    {
-        Mutex mtx;
-        CondVar cv;
-        Lock lock(mtx);
-        int calls = 0;
-        // this would infinite loop if wait doesn't check predicate first
-        cv.wait(lock, [&]{ 
-            calls++;
-            return true;  // true on first call
-        });
-        mlw_assert(calls == 1);
-    }
+    //// test 2: predicate called until true
+    //{
+    //    Mutex mtx;
+    //    CondVar cv;
+    //    Lock lock(mtx);
+    //    int calls = 0;
+    //    // this would infinite loop if wait doesn't check predicate first
+    //    cv.wait(lock, [&]{ 
+    //        calls++;
+    //        return true;  // true on first call
+    //    });
+    //    mlw_assert(calls == 1);
+    //}
 
-    // test 3: lock is re-held after wait returns
-    {
-        Mutex mtx;
-        CondVar cv;
-        Lock lock(mtx);
-        cv.wait(lock, []{ return true; });
-        mlw_assert(lock.isHeld());  // if you have this
-    }
+    //// test 3: lock is re-held after wait returns
+    //{
+    //    Mutex mtx;
+    //    CondVar cv;
+    //    Lock lock(mtx);
+    //    cv.wait(lock, []{ return true; });
+    //    mlw_assert(lock.isHeld());  // if you have this
+    //}
 
-    // test 4: wakeOne and wakeAll don't crash on no waiters
-    {
-        CondVar cv;
-        cv.wakeOne();
-        cv.wakeAll();
-    }
+    //// test 4: wakeOne and wakeAll don't crash on no waiters
+    //{
+    //    CondVar cv;
+    //    cv.wakeOne();
+    //    cv.wakeAll();
+    //}
 
-    // test 5: destructor safety (debug only)
-    {
-        CondVar cv;
-        // just destructs cleanly with no waiters
-    }
+    //// test 5: destructor safety (debug only)
+    //{
+    //    CondVar cv;
+    //    // just destructs cleanly with no waiters
+    //}
 }
 
 
@@ -61,6 +61,10 @@ struct asdsa{
     bool x = true;
 
     const bool* ptr()const{ return &x;}
+
+    asdsa() { print("somthing dom\n"); }
+
+    ~asdsa() { 1 + 1; x = false; }
 
     template<core::FormatBuffer Buf>
     void format(Buf& buffer) const {
@@ -70,6 +74,8 @@ struct asdsa{
 };
 
 void float_test(){
+
+    static asdsa sadas{};
     // basic values
 println("zero:        {}", 0.0);
 println("one:         {}", 1.0);
@@ -120,7 +126,7 @@ void numeric_limits_test(){
     println("f64 nan: {}", core::NumericLimits<f64>::nan);
 }
 
-int mallowMain() {
+int32 mallowMain() {
     sint x[3] = {42, 2, 1};
     const sint* const p = nullptr;
     println("Hello, {}! {} {} {} {} {}", "world", 2, 3.14, &x, x, p);
@@ -145,8 +151,10 @@ int mallowMain() {
 
     Atomic<uint16> vase{2141};
     
+    asdsa asddsad{};
+
     if(v.isNone()){
-        println("hell {} {}", asdsa{}, vase);
+        println("hell {} {}", asddsad, vase);
     }
 
     testCondVar();

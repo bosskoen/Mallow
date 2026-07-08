@@ -37,6 +37,7 @@ namespace core
     class Optional
     {
     private:
+
         alignas(T) char storage[sizeof(T)];
         bool has_value = false;
 

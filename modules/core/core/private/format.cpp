@@ -12,28 +12,52 @@
 
 namespace core::detail
 {
+
+
+
+	static thread_local alignas(FormatBufferType) uint8 fb_storage[sizeof(FormatBufferType)]{ 0 };
+	static thread_local bool fb_constructed = false;
+
+	void mlw__crt_distorty_format_buffer()
+	{
+		if (fb_constructed) {
+			FormatBufferType& buf = *reinterpret_cast<FormatBufferType*>(fb_storage);
+			char* p = buf.ptr;
+			if (p) {
+#if defined(MLW_WINDOWS)
+				::VirtualFree(p, 0, MEM_RELEASE);
+#elif defined(MLW_LINUX) || defined(MLW_MAC)
+				::munmap(p, buf.capacity);
+#endif
+			}
+			buf.ptr = nullptr;
+			buf.len = 0;
+			buf.capacity = 0;
+			fb_constructed = false;
+		} 
+	}
+
 	FormatBufferType &getFormatBuffer()
 	{
-		thread_local FormatBufferType buf = []()
-		{
-			FormatBufferType b;
+		if (!fb_constructed) {
+			FormatBufferType& b = *reinterpret_cast<FormatBufferType*>(fb_storage);
 
 #if defined(MLW_WINDOWS)
 
-			b.ptr = static_cast<char *>(VirtualAlloc(nullptr, mlwAllocGranularity(), MEM_RESERVE, PAGE_READWRITE));
+			b.ptr = static_cast<char*>(VirtualAlloc(nullptr, PLATFORM_INFO.alloc_granularity, MEM_RESERVE, PAGE_READWRITE));
 
 			if (!b.ptr)
 				panic_mem("VirtualAlloc(MEM_RESERVE) failed.");
 
-			if (!VirtualAlloc(b.ptr, mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
+			if (!VirtualAlloc(b.ptr, PLATFORM_INFO.page_size, MEM_COMMIT, PAGE_READWRITE))
 			{
 				panic_mem("VirtualAlloc(MEM_COMMIT) failed.");
 			}
 
 #else
 
-			b.ptr = static_cast<char *>(
-				mmap(nullptr, mlwPageSize(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+			b.ptr = static_cast<char*>(
+				mmap(nullptr, PLATFORM_INFO.page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
 
 			if (b.ptr == MAP_FAILED)
 				panic_mem("mmap() failed.");
@@ -42,12 +66,10 @@ namespace core::detail
 
 			b.ptr = MLW_ASSUME_ALIGNED(b.ptr, 4096);
 			b.len = 0;
-			b.capacity = static_cast<index_t>(mlwPageSize());
-
-			return b;
-		}();
-
-		return buf;
+			b.capacity = static_cast<index_t>(PLATFORM_INFO.page_size);
+			fb_constructed = true;
+		}
+		return *reinterpret_cast<FormatBufferType*>(fb_storage);
 	}
 }
 
@@ -55,14 +77,14 @@ void core::FormatBufferType::realocate()
 {
 #if defined(MLW_WINDOWS)
 
-	if ((capacity & mlwGranMask()) == 0)
+	if ((capacity & PLATFORM_INFO.gran_mask) == 0)
 	{
-		char *new_ptr = static_cast<char *>(VirtualAlloc(nullptr, ((capacity >> mlwGranShift()) + 1) * mlwAllocGranularity(), MEM_RESERVE, PAGE_READWRITE));
+		char *new_ptr = static_cast<char *>(VirtualAlloc(nullptr, ((capacity >> PLATFORM_INFO.gran_shift) + 1) * PLATFORM_INFO.alloc_granularity, MEM_RESERVE, PAGE_READWRITE));
 
 		if (!new_ptr)
 			panic_mem("VirtualAlloc(MEM_RESERVE) failed while growing format buffer.");
 
-		if (!VirtualAlloc(new_ptr, capacity + mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
+		if (!VirtualAlloc(new_ptr, capacity + PLATFORM_INFO.page_size, MEM_COMMIT, PAGE_READWRITE))
 		{
 			VirtualFree(new_ptr, 0, MEM_RELEASE);
 			panic_mem("VirtualAlloc(MEM_COMMIT) failed while growing format buffer.");
@@ -74,21 +96,21 @@ void core::FormatBufferType::realocate()
 			panic_mem("VirtualFree() failed.");
 
 		ptr = new_ptr;
-		capacity += static_cast<index_t>(mlwPageSize());
+		capacity += static_cast<index_t>(PLATFORM_INFO.page_size);
 	}
 	else
 	{
-		if (!VirtualAlloc(ptr + capacity, mlwPageSize(), MEM_COMMIT, PAGE_READWRITE))
+		if (!VirtualAlloc(ptr + capacity, PLATFORM_INFO.page_size, MEM_COMMIT, PAGE_READWRITE))
 		{
 			panic_mem("VirtualAlloc(MEM_COMMIT) failed while extending format buffer.");
 		}
 
-		capacity += static_cast<index_t>(mlwPageSize());
+		capacity += static_cast<index_t>(PLATFORM_INFO.page_size);
 	}
 
 #else
 
-	void *new_ptr = mremap(ptr, capacity, capacity + mlwPageSize(), MREMAP_MAYMOVE);
+	void *new_ptr = mremap(ptr, capacity, capacity + PLATFORM_INFO.page_size, MREMAP_MAYMOVE);
 
 	if (new_ptr == MAP_FAILED)
 		panic_mem("mremap() failed.");
@@ -96,7 +118,7 @@ void core::FormatBufferType::realocate()
 	ptr = static_cast<char *>(new_ptr);
 	ptr = MLW_ASSUME_ALIGNED(ptr, 4096);
 
-	capacity += static_cast<index_t>(mlwPageSize());
+	capacity += static_cast<index_t>(PLATFORM_INFO.page_size);
 
 #endif
 }

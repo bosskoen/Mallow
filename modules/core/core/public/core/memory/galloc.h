@@ -308,7 +308,7 @@ namespace core
 	 * On thread exit, ~ThreadCache migrates all owned Regions to the
 	 * global orphan_pool so they can be adopted by future threads.
 	 */
-	extern thread_local struct ThreadCache
+	struct ThreadCache
 	{
 		/**
 		 * Tracks the linked list of Regions for one size class, plus:
@@ -356,7 +356,10 @@ namespace core
 
 		ThreadCache(const ThreadCache &) = delete;
 		ThreadCache &operator=(const ThreadCache &) = delete;
-	} thread_cache;
+
+		static void mlw__first_crt_ctor();
+		static void mlw__crt_distroy_tc_storage();
+	};
 
 	struct FreePointer;
 
@@ -489,6 +492,6 @@ namespace core
 		/// nullptr ptr acts as alloc. Zero new_size acts as free.
 		/// Preserves the original alignment of medium blocks. Does not shrink.
 		void *realloc(void *ptr, usize new_size);
-	} mlw_g_alloc;
+	} &mlw_g_alloc;
 
 } // namespace core
