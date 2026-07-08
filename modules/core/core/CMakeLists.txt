@@ -55,7 +55,7 @@ target_sources(core
 
 )
 
-if(MSVC)
+if(MLW_ABI_MSVC)
     target_sources(core PRIVATE
         private/windows_crt/crt.cpp
         private/windows_crt/init_thread.cpp
@@ -66,18 +66,15 @@ else()  # GCC / Clang → Itanium ABI
     )
 endif()
 
-if(MSVC)
-    set_source_files_properties(
-        private/freestanding.cpp
-        PROPERTIES
-        COMPILE_OPTIONS "/Oi-"
-    )
-else()
-    set_source_files_properties(
-        private/freestanding.cpp
-        PROPERTIES
-        COMPILE_OPTIONS "-fno-builtin;-fno-tree-loop-distribute-patterns"
-    )
+if(MSVC)   # cl.exe or clang-cl — slash flags
+    set_source_files_properties(private/freestanding.cpp PROPERTIES
+        COMPILE_OPTIONS "/Oi-")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set_source_files_properties(private/freestanding.cpp PROPERTIES
+        COMPILE_OPTIONS "-fno-builtin;-fno-tree-loop-distribute-patterns")
+else()  # Clang in gnu-mode
+    set_source_files_properties(private/freestanding.cpp PROPERTIES
+        COMPILE_OPTIONS "-fno-builtin")
 endif()
 
 target_include_directories(core

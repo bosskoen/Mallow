@@ -14,6 +14,7 @@
 #include "thread/atomic.h"
 
 #include "crt_internals.h"
+#include "memory/galloc.h"
 
 static core::sync::Atomic<uint32> thread_id_counter{ 0 };
 const thread_local uint32 core::thread_id = thread_id_counter.fetchAdd(1, core::sync::MemoryOrder::Relaxed);
@@ -22,15 +23,34 @@ const thread_local uint32 core::thread_id = thread_id_counter.fetchAdd(1, core::
 
 MLW_NO_RETURN void core::mlwExit(int32 status)
 {
-	::ExitProcess(static_cast<UINT>(status));
-	MLW_UNREACHABLE();
+#if !defined(MLW_ABI_MSVC)
+    crt::run_thread_local_dtors();
+    crt::run_global_dtors();
+    core::ThreadCache::mlw__crt_distroy_tc_storage();
+    core::detail::mlw__crt_distroy_format_buffer();
+#endif
+
+#if defined(MLW_WINDOWS)
+    ::ExitProcess(static_cast<UINT>(status));   // loader fires DLL_PROCESS_DETACH → teardown block runs there
+#else
+    // Linux: no callback — run teardown explicitly, THEN exit
+
+    syscall(SYS_exit_group, status);
+#endif
+    MLW_UNREACHABLE();
 }
 
 MLW_NO_RETURN void core::mlwTerminate(int32 status)
 {
-	::TerminateProcess(::GetCurrentProcess(), static_cast<UINT>(status));
-	for (;;) MLW_DEBUGBREAK();
+#if defined(MLW_WINDOWS)
+    ::TerminateProcess(::GetCurrentProcess(), (UINT)status);
+    for (;;) MLW_DEBUGBREAK();
+#else
+    _exit_group(status);   // or SYS_exit_group — immediate, no teardown
+    for (;;) MLW_DEBUGBREAK();
+#endif
 }
+
 
 
 constinit core::PlatformInfo core::PLATFORM_INFO {};

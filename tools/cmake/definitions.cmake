@@ -17,7 +17,8 @@ add_compile_definitions(
     $<$<CONFIG:MinSizeRel>:MLW_RELEASE>
 )
 
-if(MSVC)
+# ── compiler identity (for intrinsics, __builtin_*, pragmas) ──
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     add_compile_definitions(MLW_MSVC)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     add_compile_definitions(MLW_CLANG)
@@ -25,6 +26,16 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_definitions(MLW_GCC)
 else()
     message(WARNING "MLW: unknown compiler: ${CMAKE_CXX_COMPILER_ID}")
+endif()
+
+# ── C++ ABI (for the crt backend + teardown model) ──
+# MSVC (CMake var) is true for cl.exe AND clang-cl → MSVC ABI.
+if(MSVC)
+    set(MLW_ABI_MSVC TRUE)
+    add_compile_definitions(MLW_ABI_MSVC)
+else()
+    set(MLW_ABI_ITANIUM TRUE)
+    add_compile_definitions(MLW_ABI_ITANIUM)
 endif()
 
 
