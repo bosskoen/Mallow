@@ -29,7 +29,7 @@ if(MSVC)
     add_compile_options(/GS- /GR- /EHs-c- /Zc:preprocessor)
 else()
     add_compile_options(-fno-rtti -fno-exceptions -ffreestanding -fno-stack-protector)
-    add_link_options(-nostdlib -static -no-pie)
+    add_link_options(-nostdlib -static -fno-pie)
 
     link_libraries(gcc)
 endif()

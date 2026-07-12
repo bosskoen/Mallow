@@ -11,7 +11,7 @@
 #include "../crt_internals.h"
 #include "core/thread/mutex.h"
 #include "core/thread/lock.h"
-#include "core/thread/condvar.h"
+#include "core/thread/candvar.h"
 #include "core/thread/atomic.h"
 
 // ════════════════════════════════════════════════════════════════════════
@@ -32,6 +32,8 @@ void run_global_ctors() {
 }
 }
 
+extern const unsigned long* mlw_auxv;
+
 // ════════════════════════════════════════════════════════════════════════
 // 2. Global destructors — __cxa_atexit / __dso_handle
 // ════════════════════════════════════════════════════════════════════════
@@ -39,6 +41,14 @@ void run_global_ctors() {
 // register its destructor. This replaces the plain atexit() the MSVC ABI uses.
 // __dso_handle identifies "this module"; for a single executable we ignore it.
 extern "C" void* __dso_handle = nullptr;
+
+extern "C" unsigned long __getauxval(unsigned long type)
+{
+    for (const unsigned long* p = mlw_auxv; p && p[0]; p += 2)
+        if (p[0] == type)          // p[0] = a_type, p[1] = a_val
+            return p[1];
+    return 0;                      // not found (safe: libgcc reads this as "no LSE")
+}
 
 namespace {
     struct DtorEntry { void (*fn)(void*); void* arg; };
@@ -72,7 +82,7 @@ extern "C" void __cxa_finalize(void* /*dso*/) {
         if (g_dtors[i].fn) { g_dtors[i].fn(g_dtors[i].arg); g_dtors[i].fn = nullptr; }
 }
 
-namespace core {
+namespace crt {
 void run_global_dtors() { __cxa_finalize(nullptr); }
 }
 

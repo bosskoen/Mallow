@@ -5,9 +5,7 @@
 #if defined(MLW_WINDOWS)
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-#include <sys/mman.h>
-#include "memory.h"
-#include "galloc.h"
+#include "syscall.h"
 #endif
 
 

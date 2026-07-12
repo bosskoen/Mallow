@@ -52,6 +52,7 @@ target_sources(core
         private/math/pow.cpp
         private/new_imp.cpp
         private/crt_internals.h
+        private/syscall.h
 
 )
 

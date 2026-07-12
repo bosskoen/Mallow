@@ -1,6 +1,6 @@
 #pragma once
 #include "../traits.h"
-#include "bit.h"
+#include "../bit.h"
 
 namespace core
 {

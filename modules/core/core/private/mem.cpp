@@ -5,7 +5,7 @@
 #if defined(MLW_WINDOWS)
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-#include <unistd.h>
+#include "syscall.h"
 #else
 #error "Unsupported platform"
 #endif
@@ -35,7 +35,7 @@ MLW_NO_RETURN void core::mlwExit(int32 status)
 #else
     // Linux: no callback — run teardown explicitly, THEN exit
 
-    syscall(SYS_exit_group, status);
+    syscall(SYS_EXIT_GROUP, status);
 #endif
     MLW_UNREACHABLE();
 }
@@ -46,7 +46,7 @@ MLW_NO_RETURN void core::mlwTerminate(int32 status)
     ::TerminateProcess(::GetCurrentProcess(), (UINT)status);
     for (;;) MLW_DEBUGBREAK();
 #else
-    _exit_group(status);   // or SYS_exit_group — immediate, no teardown
+    syscall(SYS_EXIT_GROUP, status);   // or SYS_exit_group — immediate, no teardown
     for (;;) MLW_DEBUGBREAK();
 #endif
 }
@@ -62,7 +62,7 @@ void core::detail::mlw__crt_init_platforminf()
 			GetSystemInfo(&si);
 			PLATFORM_INFO = { (usize)si.dwPageSize, (usize)si.dwPageSize - 1, MLW_CTZ((usize)si.dwPageSize), (usize)si.dwAllocationGranularity, (usize)si.dwAllocationGranularity - 1, MLW_CTZ((usize)si.dwAllocationGranularity) };
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-			usize page = (usize)sysconf(_SC_PAGESIZE);
+			usize page = (usize)mlw_pagesize;
 			PLATFORM_INFO = { page, page - 1, MLW_CTZ(page), page, page - 1, MLW_CTZ(page) };
 #else
 #error "Unsupported platform"

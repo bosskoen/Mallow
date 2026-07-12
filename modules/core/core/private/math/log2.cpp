@@ -1,5 +1,4 @@
 #include "libc/math.h"
-#include "math.h"
 //======================================================================
 //  mlw_log2_internal.h
 //  Private glue for the double-precision log2 port
