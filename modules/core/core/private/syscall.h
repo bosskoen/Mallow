@@ -1,8 +1,6 @@
 #pragma once
 
-#pragma once
-
-#if defined(MLW_LINUX)
+#if defined(MLW_LINUX) && defined(FREE_MLW_BUILD)
 
 //=============================================================================
 // x86-64

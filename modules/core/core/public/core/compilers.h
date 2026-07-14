@@ -177,6 +177,8 @@ extern "C" void __dmb(unsigned int);
 #define MLW_UNREACHABLE() ((void)0)
 #endif
 
+#if defined(FREE_MLW_BUILD)
 MLW_FORCE_INLINE void* operator new(decltype(sizeof(0)), void* ptr) noexcept { return ptr; }
 
 void operator delete(void*, usize) noexcept;
+#endif

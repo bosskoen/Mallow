@@ -5,15 +5,17 @@
 
 #include "core/../../private/crt_internals.h"
 
-#include <core/../../private/syscall.h>
+
+
+
 
 extern int32 mallowMain();
 
 extern "C" void mlwStart(){
     
+    
     core::detail::mlw__crt_init_platforminf();
     new (&core::mlw_g_alloc) core::GAlloc{};
-
 
 
     core::ThreadCache::mlw__first_crt_ctor();
@@ -35,6 +37,8 @@ extern "C" void mlwStart(){
 
 
 #if defined(MLW_LINUX)
+#include <core/../../private/syscall.h>
+
 unsigned long        mlw_pagesize;
 int                  mlw_argc;
 char**               mlw_argv;
@@ -130,11 +134,11 @@ static void mlw_setup_main_tls()
     *(void**)tp = (void*)tp;                            // self-pointer at %fs/%gs:0
 
   #if defined(MLW_X64)
-    syscall3(158 /*arch_prctl*/, 0x1002 /*ARCH_SET_FS*/, (long)tp, 0);
+    syscall(158 /*arch_prctl*/, 0x1002 /*ARCH_SET_FS*/, (long)tp, 0);
   #else // MLW_X86 — set_thread_area, then load the returned selector into %gs
     unsigned desc[4] = { 0xffffffffu, (unsigned)tp, 0x000fffffu, 0x51u };
     // entry=-1(pick), base=tp, limit=4GB pages, flags: 32bit|limit_in_pages|useable
-    syscall1(243 /*set_thread_area*/, (long)desc);
+    syscall(243 /*set_thread_area*/, (long)desc);
     unsigned short sel = (unsigned short)((desc[0] << 3) | 3);  // GDT, RPL 3
     asm volatile("movw %0, %%gs" :: "r"(sel));
   #endif

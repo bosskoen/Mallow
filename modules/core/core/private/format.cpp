@@ -41,6 +41,7 @@ namespace core::detail
 
 	FormatBufferType &getFormatBuffer()
 	{
+		//io::writeHandle(core::terminal::stdoutHandle(), core::CStr(reinterpret_cast<char*>(&fb_constructed), 1));
 		if (!fb_constructed) {
 			FormatBufferType& b = *reinterpret_cast<FormatBufferType*>(fb_storage);
 

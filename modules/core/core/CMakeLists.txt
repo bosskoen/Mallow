@@ -48,11 +48,13 @@ target_sources(core
         public/core/result.h
         public/core/bit.h
         private/freestanding.cpp
-        private/math/log2.cpp
-        private/math/pow.cpp
         private/new_imp.cpp
         private/crt_internals.h
         private/syscall.h
+        private/math/trivial.cpp
+        private/math/cbrt.cpp
+        private/math/exp.cpp
+        private/math/helpers.hpp
 
 )
 
@@ -69,13 +71,13 @@ endif()
 
 if(MSVC)   # cl.exe or clang-cl — slash flags
     set_source_files_properties(private/freestanding.cpp PROPERTIES
-        COMPILE_OPTIONS "/Oi-")
+        COMPILE_OPTIONS "/Oi-;/GL-")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_source_files_properties(private/freestanding.cpp PROPERTIES
-        COMPILE_OPTIONS "-fno-builtin;-fno-tree-loop-distribute-patterns")
+        COMPILE_OPTIONS "-fno-builtin;-fno-tree-loop-distribute-patterns;-fno-lto")
 else()  # Clang in gnu-mode
     set_source_files_properties(private/freestanding.cpp PROPERTIES
-        COMPILE_OPTIONS "-fno-builtin")
+        COMPILE_OPTIONS "-fno-builtin;-fno-lto")
 endif()
 
 target_include_directories(core

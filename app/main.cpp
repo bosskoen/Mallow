@@ -68,7 +68,7 @@ struct asdsa{
 
     template<core::FormatBuffer Buf>
     void format(Buf& buffer) const {
-        const bool x = ptr();
+        const bool x = *ptr();
         mlw_write(buffer, "this is a int: {}", x);
     }
 };
@@ -115,9 +115,9 @@ println("float:       {}", f);
 
 void numeric_limits_test(){
     println("u8  max: {}", core::NumericLimits<uint8>::max);   // 255
-    println("i8  min: {}", core::NumericLimits<int8>::min);    // -128
+   println("i8  min: {}", core::NumericLimits<int8>::min);    // -128
     println("u32 max: {}", core::NumericLimits<uint32>::max);  // 4294967295
-    println("i32 min: {}", core::NumericLimits<int32>::min);   // -2147483648
+   println("i32 min: {}", core::NumericLimits<int32>::min);   // -2147483648
     println("u64 max: {}", core::NumericLimits<uint64>::max);  // 18446744073709551615
     println("i64 min: {}", core::NumericLimits<int64>::min);   // -9223372036854775808
     println("f32 eps: {}", core::NumericLimits<f32>::epsilon);
@@ -127,17 +127,26 @@ void numeric_limits_test(){
 }
 
 int32 mallowMain() {
+
     sint x[3] = {42, 2, 1};
     const sint* const p = nullptr;
+
     println("Hello, {}! {} {} {} {} {}", "world", 2, 3.14, &x, x, p);
     //panic("", "s");
 
+    print("before alloc");
     void* ptr = core::mlwAlignedAlloc(100, 64);
+    print("after alloc");
     static_cast<char*>(ptr)[0] = 1;
     print("some text\n");
     core::CStr thing = core::CStr{static_cast<char*>(ptr), 100}; 
-    print("Hello, {}! {} {} {} {} {}", thing, 2, 3.14, &x, x, ptr);
+    print("Hello, {}! {} {} {} {} {}\n", thing, 2, 3.14, &x, x, ptr);
     float_test();
+
+	f64 f = core::mlwExp(3.2);
+    println("{}", f);
+    //println("{}", core::mlwSqrt(3.2f););
+
 
     Mutex l{};
 
@@ -154,7 +163,7 @@ int32 mallowMain() {
     asdsa asddsad{};
 
     if(v.isNone()){
-        println("hell {} {}", asddsad, vase);
+       println("hell {} {}", asddsad, vase);
     }
 
     testCondVar();

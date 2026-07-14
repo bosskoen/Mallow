@@ -5,9 +5,9 @@
 extern "C"{
 
 
-static int const epoch_start = 1;
-__declspec(thread) int _Init_thread_epoch = 1;
-int _Init_global_epoch = 1; //no atomic store throw atomic prosses?
+//static int const epoch_start = 1;
+__declspec(thread) int _Init_thread_epoch = core::NumericLimits<int32>::min;
+int _Init_global_epoch = core::NumericLimits<int32>::min;
 
 static core::sync::Mutex global_lock{};
 static core::sync::CondVar global_cv{};

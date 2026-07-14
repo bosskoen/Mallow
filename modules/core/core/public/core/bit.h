@@ -8,12 +8,6 @@ namespace core
     {
         static_assert(sizeof(To) == sizeof(From));
 
-        union
-        {
-            From from;
-            To to;
-        } u{value};
-
-        return u.to;
+        return __builtin_bit_cast(To, value);
     }
 } // namespace core
