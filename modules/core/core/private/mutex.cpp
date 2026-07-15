@@ -4,7 +4,7 @@
 #include <windows.h>
 //#include <synchapi.h> //need arch data
 #elif defined(MLW_LINUX) 
-#include "syscall.h"
+#include "posix/syscall_api.h"
 #elif defined(MLW_MAC)
 #include <os/os_sync_wait_on_address.h>
 #endif

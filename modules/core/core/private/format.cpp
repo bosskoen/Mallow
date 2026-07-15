@@ -5,7 +5,7 @@
 #if defined(MLW_WINDOWS)
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-#include "syscall.h"
+#include "posix/syscall_api.h"
 #else
 #error "Unsupported platform"
 #endif

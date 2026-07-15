@@ -37,7 +37,7 @@ extern "C" void mlwStart(){
 
 
 #if defined(MLW_LINUX)
-#include <core/../../private/syscall.h>
+#include <core/../../private/posix/syscall_api.h>
 
 unsigned long        mlw_pagesize;
 int                  mlw_argc;

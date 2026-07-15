@@ -5,7 +5,7 @@
     #define NOMINMAX
     #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-#include "syscall.h"
+#include "posix/syscall_api.h"
 #endif
 
 namespace io

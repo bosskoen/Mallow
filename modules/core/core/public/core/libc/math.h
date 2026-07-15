@@ -54,19 +54,31 @@ namespace core
         return value < min ? min : (value > max ? max : value);
     }
 
-    inline f64 mlwPow(f64 base, f64 power) { return 0; };
 
-    f32 mlwPow(f32 base, f32 power);
 
-    f64 mlwLog2(f64 x);
-    f32 mlwLog2(f32 x);
+    MLW_FORCE_INLINE f64 mlwLog(f64 x) {return x;};
+    MLW_FORCE_INLINE f32 mlwLog(f32 x) {return x;};
 
+     MLW_FORCE_INLINE f64 mlwLog2(f64 x) {return x;};
+    MLW_FORCE_INLINE f32 mlwLog2(f32 x) {return x;};
+
+     f64 mlwLog10(f64 x);
+    MLW_FORCE_INLINE f32 mlwLog10(f32 x) {return x;};
+ 
     f32 mlwExp(f32 x);
     f64 mlwExp(f64 x);
 
-    inline f64 mlwLog10(f64 x) {
-        return 0;
-    };
+    f32 mlwExp2(f32 x);
+    f64 mlwExp2(f64 x);
+
+    // warning: exp10 is not 1 ulp is hase a max ulp of 4 use pow instead. at the cost of being 2.2 times slower
+    f64 mlwExp10(f64 x);
+    // warning: exp10 is not 1 ulp is hase a max ulp of 4 use pow instead. at the cost of being 1.15 times slower in relace
+    f32 mlwExp10(f32 x);
+
+    f64 mlwPow(f64 base, f64 power);
+    f32 mlwPow(f32 base, f32 power);
+
 
 
     MLW_FORCE_INLINE f64 mlwFloor(f64 x)
@@ -304,6 +316,97 @@ namespace core
         return result;
     }
 
+    struct FloatParts {
+		f32 integral = 0.0f;
+		f32 fractional = 0.0f;
+    };
+
+    MLW_FORCE_INLINE FloatParts mlwSplit(f32 x)
+    {
+        union { f32 f; uint32 i; } u = { x };
+        uint32 mask;
+        int e = (int)(u.i >> 23 & 0xff) - 0x7f;
+
+		FloatParts parts;
+
+        /* no fractional part */
+        if (e >= 23) {
+            parts.integral = x;
+            if (e == 0x80 && u.i << 9 != 0) { /* nan */
+                parts.fractional = x;
+                return parts;
+            }
+            u.i &= 0x80000000;
+            parts.fractional = u.f;
+            return parts;
+        }
+        /* no integral part */
+        if (e < 0) {
+            u.i &= 0x80000000;
+            parts.integral = u.f;
+            parts.fractional = x;
+            return parts;
+        }
+
+        mask = 0x007fffff >> e;
+        if ((u.i & mask) == 0) {
+            parts.integral = x;
+            u.i &= 0x80000000;
+            parts.fractional = u.f;
+            return parts;
+        }
+        u.i &= ~mask;
+        parts.integral = u.f;
+        parts.fractional = x - u.f;
+        return parts;
+    }
+
+    struct DoubleParts {
+        f64 integral = 0.0;
+        f64 fractional = 0.0;
+    };
+
+    MLW_FORCE_INLINE DoubleParts mlwSplit(f64 x)
+    {
+        union { f64 f; uint64 i; } u = { x };
+        uint64 mask;
+        int e = (int)(u.i >> 52 & 0x7ff) - 0x3ff;
+
+		DoubleParts parts;
+
+        /* no fractional part */
+        if (e >= 52) {
+            parts.integral = x;
+            if (e == 0x400 && u.i << 12 != 0) { /* nan */
+                parts.fractional = x;
+                return parts;
+            }
+            u.i &= 1ULL << 63;
+            parts.fractional = u.f;
+            return parts;
+        }
+
+        /* no integral part*/
+        if (e < 0) {
+            u.i &= 1ULL << 63;
+            parts.integral = u.f;
+            parts.fractional = x;
+            return parts;
+        }
+
+        mask = (~0ULL) >> 12 >> e;
+        if ((u.i & mask) == 0) {
+            parts.integral = x;
+            u.i &= 1ULL << 63;
+			parts.fractional = u.f;
+            return parts;
+        }
+        u.i &= ~mask;
+        parts.integral = u.f;
+        parts.fractional = x - u.f;
+        return parts;
+    }
+
     MLW_FORCE_INLINE f64 mlwRound(f64 x)
     {
         uint64 bits = mlwBitCast<uint64>(x);
@@ -467,6 +570,9 @@ namespace core
         extern "C" __m128d _mm_sqrt_sd(__m128d, __m128d);
         extern "C" double _mm_cvtsd_f64(__m128d);
 
+        extern "C" __m128 _mm_fmadd_ss(__m128, __m128, __m128);
+		extern "C" __m128d _mm_fmadd_sd(__m128d, __m128d, __m128d);
+
         extern "C" __m128 _mm_set_ss(float);
         extern "C" __m128 _mm_sqrt_ss(__m128);
         extern "C" float _mm_cvtss_f32(__m128);
@@ -543,7 +649,7 @@ namespace core
         }
         else
         {
-            uxi &= -1ULL >> 12;
+            uxi &= (~0ULL) >> 12;
             uxi |= 1ULL << 52;
         }
         if (!ey)
@@ -554,7 +660,7 @@ namespace core
         }
         else
         {
-            uy.i &= -1ULL >> 12;
+            uy.i &= (~0ULL) >> 12;
             uy.i |= 1ULL << 52;
         }
 
@@ -626,7 +732,7 @@ namespace core
         }
         else
         {
-            uxi &= -1U >> 9;
+            uxi &= (~0U) >> 9;
             uxi |= 1U << 23;
         }
         if (!ey)
@@ -637,7 +743,7 @@ namespace core
         }
         else
         {
-            uy.i &= -1U >> 9;
+            uy.i &= (~0U) >> 9;
             uy.i |= 1U << 23;
         }
 
@@ -680,4 +786,47 @@ namespace core
 
     f32 mlwCbrt(f32);
     f64 mlwCbrt(f64);
+
+    // True single-rounding hardware FMA available for this TU?
+#if defined(__FMA__)                    /* gcc/clang x86/x64 with -mfma       */ \
+ || defined(__ARM_FEATURE_FMA)          /* gcc/clang armv7 vfpv4 / arm64      */ \
+ || defined(__FP_FAST_FMA)                                                       \
+ || (defined(MLW_MSVC) && defined(__AVX2__))     /* MSVC x86/x64 /arch:AVX2   */ \
+ || (defined(MLW_MSVC) && (defined(MLW_ARM64) || defined(MLW_ARM32)))  /* MSVC ARM */
+#  define MLW_HAS_FAST_FMA 1
+#else
+#  define MLW_HAS_FAST_FMA 0
+#endif
+
+// Single-rounding fused multiply-add, portable across compilers and targets.
+#if defined(MLW_MSVC)
+#if defined(MLW_ARM64) || defined(MLW_ARM32)
+  // MSVC ARM: ACLE intrinsics -> single vfma. Declared here to avoid <arm_neon.h>.
+    extern "C" double __fma(double, double, double);
+    extern "C" float  __fmaf(float, float, float);
+    MLW_FORCE_INLINE f64 mlwFma(f64 a, f64 b, f64 c) { return __fma(a, b, c); }
+    MLW_FORCE_INLINE f32 mlwFma(f32 a, f32 b, f32 c) { return __fmaf(a, b, c); }
+#else
+  // MSVC x86/x64: FMA3 intrinsic -> single vfmadd under /arch:AVX2.
+    MLW_FORCE_INLINE f64 mlwFma(f64 a, f64 b, f64 c) {
+        sqrt_internals::__m128d va = sqrt_internals::_mm_set_sd(a);
+        sqrt_internals::__m128d vb = sqrt_internals::_mm_set_sd(b);
+        sqrt_internals::__m128d vc = sqrt_internals::_mm_set_sd(c);
+
+        return _mm_cvtsd_f64(_mm_fmadd_sd(va, vb, vc));
+    }
+    MLW_FORCE_INLINE f32 mlwFma(f32 a, f32 b, f32 c) {
+        sqrt_internals::__m128 va = sqrt_internals::_mm_set_ss(a);
+        sqrt_internals::__m128 vb = sqrt_internals::_mm_set_ss(b);
+        sqrt_internals::__m128 vc = sqrt_internals::_mm_set_ss(c);
+
+        return sqrt_internals::_mm_cvtss_f32(sqrt_internals::_mm_fmadd_ss(va, vb, vc));
+    }
+#endif
+#else
+    MLW_FORCE_INLINE f64 mlwFma(f64 a, f64 b, f64 c) { return __builtin_fma(a, b, c); }
+    MLW_FORCE_INLINE f32 mlwFma(f32 a, f32 b, f32 c) { return __builtin_fmaf(a, b, c); }
+#endif
 }
+
+

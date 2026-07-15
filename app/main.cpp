@@ -113,6 +113,11 @@ println("float:       {}", f);
 
 }
 
+extern "C" {
+    int QueryPerformanceCounter(long long* count);
+    int QueryPerformanceFrequency(long long* freq);
+}
+
 void numeric_limits_test(){
     println("u8  max: {}", core::NumericLimits<uint8>::max);   // 255
    println("i8  min: {}", core::NumericLimits<int8>::min);    // -128
@@ -143,9 +148,56 @@ int32 mallowMain() {
     print("Hello, {}! {} {} {} {} {}\n", thing, 2, 3.14, &x, x, ptr);
     float_test();
 
-	f64 f = core::mlwExp(3.2);
-    println("{}", f);
-    //println("{}", core::mlwSqrt(3.2f););
+    long long freq, t0, t1;
+    QueryPerformanceFrequency(&freq);
+
+    volatile f64 sink = 0;               // volatile so the loop can't be optimized away
+    QueryPerformanceCounter(&t0);
+    for (uint64 i = 0; i < 50'000'000; ++i) {
+        f64 x = 0.001 * (i & 0x3FF);
+        sink += core::mlwExp10(x);
+    }
+    QueryPerformanceCounter(&t1);
+    f64 secs = double(t1 - t0) / double(freq);
+
+	println("mlwExp10 took {} seconds", secs);
+
+    QueryPerformanceFrequency(&freq);
+
+    sink = 0;               // volatile so the loop can't be optimized away
+    QueryPerformanceCounter(&t0);
+    for (uint64 i = 0; i < 50'000'000; ++i) {
+        f64 x = 0.001 * (i & 0x3FF);
+        sink += core::mlwPow(10. , x);
+    }
+    QueryPerformanceCounter(&t1);
+    secs = double(t1 - t0) / double(freq);
+	println("mlwpow10 took {} seconds", secs);
+
+    QueryPerformanceFrequency(&freq);
+
+    volatile f32 sinkf = 0;               // volatile so the loop can't be optimized away
+    QueryPerformanceCounter(&t0);
+    for (uint64 i = 0; i < 50'000'000; ++i) {
+        f32 x = 0.001f * (i & 0x3FF);
+        sinkf += core::mlwExp10(x);
+    }
+    QueryPerformanceCounter(&t1);
+    secs = double(t1 - t0) / double(freq);
+
+    println("mlwExp10f took {} seconds", secs);
+
+    QueryPerformanceFrequency(&freq);
+
+    sinkf = 0;               // volatile so the loop can't be optimized away
+    QueryPerformanceCounter(&t0);
+    for (uint64 i = 0; i < 50'000'000; ++i) {
+        f32 x = 0.001f * (i & 0x3FF);
+        sinkf += core::mlwPow(10.0f, x);
+    }
+    QueryPerformanceCounter(&t1);
+    secs = double(t1 - t0) / double(freq);
+    println("mlwpow10f took {} seconds", secs);
 
 
     Mutex l{};

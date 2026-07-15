@@ -29,6 +29,7 @@ endif()
 set(MLW_MATH_SOURCES
     ${CMAKE_SOURCE_DIR}/../../modules/core/core/private/math/exp.cpp
     ${CMAKE_SOURCE_DIR}/../../modules/core/core/private/math/cbrt.cpp
+    ${CMAKE_SOURCE_DIR}/../../modules/core/core/private/math/log.cpp
     # add trivial.cpp / others as you test them
 )
 

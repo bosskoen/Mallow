@@ -50,12 +50,12 @@ target_sources(core
         private/freestanding.cpp
         private/new_imp.cpp
         private/crt_internals.h
-        private/syscall.h
+        private/posix/syscall_api.h
         private/math/trivial.cpp
         private/math/cbrt.cpp
         private/math/exp.cpp
         private/math/helpers.hpp
-
+        private/math/log.cpp
 )
 
 if(MLW_ABI_MSVC)
@@ -78,6 +78,14 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 else()  # Clang in gnu-mode
     set_source_files_properties(private/freestanding.cpp PROPERTIES
         COMPILE_OPTIONS "-fno-builtin;-fno-lto")
+endif()
+
+if(MSVC)
+    set_source_files_properties(private/math/exp.cpp private/math/cbrt.cpp private/math/log.cpp
+        PROPERTIES COMPILE_OPTIONS "/fp:precise;/fp:contract")
+else()
+    set_source_files_properties(private/math/exp.cpp private/math/cbrt.cpp private/math/log.cpp
+        PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=fast")
 endif()
 
 target_include_directories(core

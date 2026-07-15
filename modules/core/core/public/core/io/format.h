@@ -336,7 +336,7 @@ namespace core
         template <typename... Args>
         consteval bool checkFormattable()
         {
-            return (FormattableValue<remove_const_t<remove_ref_t<Args>>, FormatBufferType> && ...);
+            return (FormattableValue<remove_cv_t<remove_ref_t<Args>>, FormatBufferType> && ...);
         }
 
         template <typename... Args>

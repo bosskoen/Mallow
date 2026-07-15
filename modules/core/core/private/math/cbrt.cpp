@@ -163,5 +163,5 @@ f32 core::mlwCbrt(f32 x)
 	T = T*((f64)x+x+r)/(x+r+r);
 
 	/* rounding to 24 bits is perfect in round-to-nearest mode */
-	return T;
+	return static_cast<f32>(T);
 }
