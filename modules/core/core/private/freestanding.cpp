@@ -3,12 +3,6 @@
 #include "libc/mem.h"
 
 
-#ifdef MLW_MSVC
-#pragma function(memcpy, memset, strlen)   // file scope, before the definitions
-#endif
-
-extern "C" int _fltused = 0;
-
 extern "C" usize strlen(const char *str)
 {
     const char *p = str;

@@ -6,6 +6,9 @@
 
 extern "C" {
 
+    int _fltused = 0;
+
+    
 // ── 1. .tls section bounds (from tlssup.c) ──────────────────────────────
 // The compiler places every thread_local between these two symbols.
 // _tls_used references them so the loader knows the TLS template size.

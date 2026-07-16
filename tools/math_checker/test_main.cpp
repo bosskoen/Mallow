@@ -339,11 +339,11 @@ static std::vector<Test> buildTests(){
                   [](double x){ return core::mlwExp10(x); },{}, {},
                   unaryRef(mpfr_exp10), {}, sampExp10, {} });
 
-    T.push_back({ "log",   Kind::F64_UNARY, false, {},
+    T.push_back({ "log",   Kind::F64_UNARY, true, {},
                   [](double x){ return core::mlwLog  (x); },{}, {},
                   unaryRef(mpfr_log),   {}, sampLog,   {} });
 
-    T.push_back({ "log2",  Kind::F64_UNARY, false, {},
+    T.push_back({ "log2",  Kind::F64_UNARY, true, {},
                   [](double x){ return core::mlwLog2 (x); }, {},{},
                   unaryRef(mpfr_log2),  {}, sampLog,   {} });
 
@@ -374,13 +374,13 @@ static std::vector<Test> buildTests(){
                   unaryRef(mpfr_exp10), {}, {}, {} });
 
     // logf family: off until implemented
-    T.push_back({ "logf",   Kind::F32_EXHAUSTIVE, false,
+    T.push_back({ "logf",   Kind::F32_EXHAUSTIVE, true,
                   [](float x){ return core::mlwLog  (x); }, {},{}, {},
                   unaryRef(mpfr_log),   {}, {}, {} });
-    T.push_back({ "log2f",  Kind::F32_EXHAUSTIVE, false,
+    T.push_back({ "log2f",  Kind::F32_EXHAUSTIVE, true,
                   [](float x){ return core::mlwLog2 (x); },{}, {}, {},
                   unaryRef(mpfr_log2),  {}, {}, {} });
-    T.push_back({ "log10f", Kind::F32_EXHAUSTIVE, false,
+    T.push_back({ "log10f", Kind::F32_EXHAUSTIVE, true,
                   [](float x){ return core::mlwLog10(x); }, {},{}, {},
                   unaryRef(mpfr_log10), {}, {}, {} });
 

@@ -56,14 +56,14 @@ namespace core
 
 
 
-    MLW_FORCE_INLINE f64 mlwLog(f64 x) {return x;};
-    MLW_FORCE_INLINE f32 mlwLog(f32 x) {return x;};
+    f64 mlwLog(f64 x);
+    f32 mlwLog(f32 x);
 
-     MLW_FORCE_INLINE f64 mlwLog2(f64 x) {return x;};
-    MLW_FORCE_INLINE f32 mlwLog2(f32 x) {return x;};
+     f64 mlwLog2(f64 x);
+    f32 mlwLog2(f32 x);
 
      f64 mlwLog10(f64 x);
-    MLW_FORCE_INLINE f32 mlwLog10(f32 x) {return x;};
+    f32 mlwLog10(f32 x);
  
     f32 mlwExp(f32 x);
     f64 mlwExp(f64 x);

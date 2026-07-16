@@ -56,3 +56,13 @@ static MLW_FORCE_INLINE f64 __math_invalid(f64 x)
 	return (x - x) / (x - x);
 }
 
+
+static MLW_FORCE_INLINE f32 __math_divzerof(uint32 sign)
+{
+	return fp_barrierf(sign ? -1.0f : 1.0f) / fp_barrierf(0.0f);
+}
+
+static MLW_FORCE_INLINE f64 __math_divzero(uint32 sign)
+{
+	return fp_barrier(sign ? -1.0 : 1.0) / fp_barrier(0.0);
+}

@@ -153,7 +153,7 @@ int32 mallowMain() {
 
     volatile f64 sink = 0;               // volatile so the loop can't be optimized away
     QueryPerformanceCounter(&t0);
-    for (uint64 i = 0; i < 50'000'000; ++i) {
+    for (uint64 i = 0; i < 5'000'000; ++i) {
         f64 x = 0.001 * (i & 0x3FF);
         sink += core::mlwExp10(x);
     }
@@ -166,7 +166,7 @@ int32 mallowMain() {
 
     sink = 0;               // volatile so the loop can't be optimized away
     QueryPerformanceCounter(&t0);
-    for (uint64 i = 0; i < 50'000'000; ++i) {
+    for (uint64 i = 0; i < 5'000'000; ++i) {
         f64 x = 0.001 * (i & 0x3FF);
         sink += core::mlwPow(10. , x);
     }
@@ -178,7 +178,7 @@ int32 mallowMain() {
 
     volatile f32 sinkf = 0;               // volatile so the loop can't be optimized away
     QueryPerformanceCounter(&t0);
-    for (uint64 i = 0; i < 50'000'000; ++i) {
+    for (uint64 i = 0; i < 5'000'000; ++i) {
         f32 x = 0.001f * (i & 0x3FF);
         sinkf += core::mlwExp10(x);
     }
@@ -191,7 +191,7 @@ int32 mallowMain() {
 
     sinkf = 0;               // volatile so the loop can't be optimized away
     QueryPerformanceCounter(&t0);
-    for (uint64 i = 0; i < 50'000'000; ++i) {
+    for (uint64 i = 0; i < 5'000'000; ++i) {
         f32 x = 0.001f * (i & 0x3FF);
         sinkf += core::mlwPow(10.0f, x);
     }
