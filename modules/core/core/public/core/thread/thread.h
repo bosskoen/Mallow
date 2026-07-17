@@ -1,8 +1,175 @@
 #pragma once
 
+#include "core/io/handle.h"
+#include "core/traits.h"
+#include "core/libc/mem.h"
+#include "core/result.h"
 namespace core
 {
-    
-    
+    namespace detail
+    {
+        struct ThreadStart
+        {
+            void (*fn)(void *);
+            void *args;
+        };
+        void sys_join(io::Handle &);
+        uint32 sys_spawn(io::Handle &, ThreadStart *);
+    }
+
+    struct Unit
+    {
+    }; // or reuse whatever empty struct you already have
+
+    struct ThreadError
+    {
+        enum Kind : uint8
+        {
+            CreateFailed
+        } kind;
+        uint32 os_code; // GetLastError() / errno — captured at the failure site
+        template <core::FormatBuffer Buf>
+        void format(Buf &b) const { mlw_write(b, "ThreadError(create failed, os={})", os_code); }
+    };
+
+    template <typename Fn, typename R = core::invoke_result_t<Fn>>
+        requires core::is_invocable_v<Fn>
+    class ThreadHandle
+    {
+
+        template <typename T>
+        struct ReturnSlot
+        {
+            bool has_return = false;
+            alignas(R) uint8 result[sizeof(R)]{};
+        };
+
+        template <>
+        struct ReturnSlot<void>
+        {
+        };
+
+        struct ThreadParameters
+        {
+            Fn fn; // decayed copy of the closure
+            ReturnSlot<R> ret;
+        } *params = nullptr;
+
+        static void threadCall(void *arg)
+        {
+            ThreadParameters *params = static_cast<ThreadParameters *>(arg);
+            if constexpr (core::is_same_v<R, void>)
+            {
+                params->fn();
+            }
+            else
+            {
+                new (params->ret.result) R(params->fn());
+                params->ret.has_return = true;
+            }
+        }
+
+        io::Handle handle;
+
+    public:
+        explicit ThreadHandle(Fn &&f) : handle(0)
+        {
+            params = static_cast<ThreadParameters *>(mlwAlignedAlloc(sizeof(ThreadParameters), alignof(ThreadParameters)));
+            new (params) ThreadParameters{core::forward<Fn>(f)};
+        }
+
+        ~ThreadHandle()
+        {
+            if (!params)
+                return;
+            if (handle.fd != nullptr)
+                panic("ThreadHandle destroyed without join() being called.");
+
+            if constexpr (!core::is_same_v<R, void>)
+            {
+                if (params->ret.has_return)
+                {
+                    reinterpret_cast<R *>(params->ret.result)->~R();
+                    params->ret.has_return = false;
+                }
+            }
+            params->~ThreadParameters();
+            mlwFree(params);
+            params = nullptr;
+            handle = 0;
+        };
+
+        ThreadHandle(const ThreadHandle &) = delete;
+        ThreadHandle &operator=(const ThreadHandle &) = delete;
+
+        ThreadHandle(ThreadHandle &&other) noexcept : params(other.params), handle(other.handle)
+        {
+            other.params = nullptr;
+            other.handle = 0;
+        }
+        ThreadHandle &operator=(ThreadHandle &&other) noexcept
+        {
+            if (this != &other)
+            {
+                params = other.params;
+                handle = other.handle;
+                other.params = nullptr;
+                other.handle = 0;
+            }
+            return *this;
+        }
+
+        core::Result<Unit, ThreadError> spawn()
+        {
+            detail::ThreadStart *s = ::new (core::mlwMalloc(sizeof(detail::ThreadStart)))
+                detail::ThreadStart{&threadCall, params};
+            if (uint32 code = detail::sys_spawn(handle, s); code != 0)
+            {
+                core::mlwFree(s); // thread never ran -> IT never frees s -> WE must
+                return core::Err{ThreadError{ThreadError::CreateFailed, code}};
+            }
+            return Unit{};
+        }
+
+        core::Result<core::ThreadHandle<Fn>, ThreadError> spawn(Fn &&fn)
+        {
+            core::ThreadHandle<Fn> h{core::forward<Fn>(fn)}; // OOM here -> panic
+            if (auto r = h.spawn(); r.isErr())
+                return core::Err{r.takeError()};
+            return core::move(h); // hand the running thread out
+        }
+
+        R join()
+        {
+            if (!params)
+                panic("ThreadHandle::join() called on a moved-from ThreadHandle.");
+            if (handle.fd == nullptr)
+                panic("ThreadHandle::join() call twice or on a non started thread.");
+
+            detail::sys_join(handle);
+            if constexpr (!core::is_same_v<R, void>)
+            {
+                if (params->ret.has_return)
+                {
+                    R *slot = reinterpret_cast<R *>(params->ret.result);
+                    R out = core::move(*slot); // move-construct out of the slot
+                    slot->~R();                // destroy the moved-from husk in the slot
+                    params->ret.has_return = false;
+                    handle = 0;
+                    return out;
+                }
+                panic("ThreadHandle::join() called on a thread that did not return a value.");
+            }
+            else
+            {
+                handle = 0;
+                return;
+            }
+        };
+
+        //try_join()
+        //detach()
+        //joinable()
+    };
 
 } // namespace core

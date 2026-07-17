@@ -56,6 +56,7 @@ target_sources(core
         private/math/exp.cpp
         private/math/helpers.hpp
         private/math/log.cpp
+        private/thread.cpp
 )
 
 if(MLW_ABI_MSVC)
