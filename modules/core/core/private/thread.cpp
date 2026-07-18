@@ -70,7 +70,7 @@ struct LinuxThreadState
 long ms_wait(volatile int *word, int expect, uint32 ms)
 {
     timespec ts{(long)(ms / 1000), (long)((ms % 1000) * 1000000L)};
-    return futex((int *)word, FUTEX_WAIT_PRIVATE, expect, ms ? &ts : nullptr, nullptr, 0);
+    return futex((int *)word, FUTEX_WAIT_PRIVATE, expect, ms ? &ts : nullptr);
 }
 
 int threadEntry(void *s)
@@ -139,7 +139,7 @@ void core::detail::sys_join(void* &h)
 
 bool core::detail::try_join(void* &h, uint32 ms)
 {
-    LinuxThreadState *st = (LinuxThreadState *)h.fd;
+    LinuxThreadState *st = (LinuxThreadState *)h;
     int t = __atomic_load_n(&st->tid, __ATOMIC_ACQUIRE);
     if (t != 0)
         ms_wait(&st->tid, t, ms); // relative timeout; ETIMEDOUT if still running
