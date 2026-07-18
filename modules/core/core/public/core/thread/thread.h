@@ -88,7 +88,7 @@ namespace core
         explicit ThreadHandle(Fn &&f) : handle(0)
         {
             params = static_cast<ThreadParameters *>(mlwAlignedAlloc(sizeof(ThreadParameters), alignof(ThreadParameters)));
-            new (params) ThreadParameters{core::forward<Fn>(f)};
+            new (params) ThreadParameters{core::forward<Fn>(f), {}};
         }
 
         ~ThreadHandle()

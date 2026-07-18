@@ -73,7 +73,7 @@ asm(".text\n.balign 4\n.global _start\n.type _start,%function\n_start:\n\t mov r
 //  MLW_ARM32: same structure as ARM64 (Variant I, 8-byte TCB); by analogy.
 // ===========================================================================
 
-void* mlw_setup_main_tls(usize& leng)
+void* mlw_setup_main_tls(usize& leng);
  
 extern "C" void mlwStart();
 extern "C" void _start_c(unsigned long* sp){
