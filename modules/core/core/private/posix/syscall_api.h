@@ -845,7 +845,7 @@ extern char**               mlw_envp;
 extern const unsigned long* mlw_auxv;
 
 
-struct mlw_timespec {
+struct timespec {
     long tv_sec;    // whole seconds
     long tv_nsec;   // nanoseconds (0 .. 999,999,999)
 };

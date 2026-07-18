@@ -13,6 +13,19 @@ namespace core
             void (*fn)(void *);
             void *args;
         };
+
+                template <typename T>
+        struct ReturnSlot
+        {
+            bool has_return = false;
+            alignas(R) uint8 result[sizeof(R)]{};
+        };
+
+        template <>
+        struct ReturnSlot<void>
+        {
+        };
+
         
         void sys_join(void* &);
         bool try_join(void*&,uint32);
@@ -49,23 +62,10 @@ namespace core
         requires core::is_invocable_v<Fn>
     class ThreadHandle
     {
-
-        template <typename T>
-        struct ReturnSlot
-        {
-            bool has_return = false;
-            alignas(R) uint8 result[sizeof(R)]{};
-        };
-
-        template <>
-        struct ReturnSlot<void>
-        {
-        };
-
         struct ThreadParameters
         {
             Fn fn; // decayed copy of the closure
-            ReturnSlot<R> ret;
+            detail::ReturnSlot<R> ret;
         } *params = nullptr;
 
         static void threadCall(void *arg)
@@ -134,7 +134,7 @@ namespace core
 
         core::Result<Unit, ThreadError> spawn()
         {
-            if (handle != nullptr) return Err{ThreadError{ThreadError::DoubleStart}};
+            if (handle != nullptr) return Err{ThreadError{ThreadError::DoubleStart}, 0};
             //maby zero out retern
 
             detail::ThreadStart *s = ::new (core::mlwMalloc(sizeof(detail::ThreadStart))) detail::ThreadStart{&threadCall, params};
@@ -187,7 +187,7 @@ namespace core
                 if (!params || handle == nullptr) return true;   // nothing to wait on = "done"
                 return detail::try_join(handle, ms);
             }else{
-               if (!params || handle.fd == 0) return Optional<R>{}; 
+               if (!params || handle == 0) return Optional<R>{}; 
                 if (!detail::try_join(handle, ms)) return Optional<R>{}; 
                 if (params->ret.has_return)
                 {
@@ -202,7 +202,7 @@ namespace core
             }
         }
         MLW_FORCE_INLINE bool joinable() const {
-            if (!params || handle.fd == 0) return false; 
+            if (!params || handle == 0) return false; 
         }
 
         //detach()

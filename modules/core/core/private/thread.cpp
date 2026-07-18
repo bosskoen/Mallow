@@ -52,13 +52,12 @@ bool core::detail::try_join(void* &h, uint32 ms)
 
 #include "posix/syscall_api.h"
 
-void *mlw_setup_main_tls(usize &leng)
+void *mlw_setup_main_tls(usize &leng);
 
     constexpr int MLW_CLONE_FLAGS =
         CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD |
         CLONE_SYSVSEM | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID;
 
-constexpr int FUTEX_WAIT_PRIVATE = 0 | 128; // FUTEX_WAIT | FUTEX_PRIVATE_FLAG
 constexpr long DEFAULT_STACK = 1 << 20;     // 1 MiB, matches your PE default
 
 struct LinuxThreadState
@@ -124,7 +123,7 @@ uint32 core::detail::sys_spawn(void* &h, ThreadStart *s)
 
 void core::detail::sys_join(void* &h)
 {
-    auto *st = (LinuxThreadState *)h;
+    LinuxThreadState *st = (LinuxThreadState *)h;
     // kernel set tid at clone (CLONE_PARENT_SETTID) and clears it to 0 on exit.
     // loop because futex can return spuriously / on EINTR / on EAGAIN.
     for (;;)
@@ -138,9 +137,9 @@ void core::detail::sys_join(void* &h)
     mlwFree(st); // now not-joinable (same contract as Windows)
 }
 
-bool core::detail::try_join(io::Handle &h, uint32 ms)
+bool core::detail::try_join(void* &h, uint32 ms)
 {
-    auto *st = (LinuxThreadState *)h.fd;
+    LinuxThreadState *st = (LinuxThreadState *)h.fd;
     int t = __atomic_load_n(&st->tid, __ATOMIC_ACQUIRE);
     if (t != 0)
         ms_wait(&st->tid, t, ms); // relative timeout; ETIMEDOUT if still running
