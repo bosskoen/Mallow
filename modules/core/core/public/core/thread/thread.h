@@ -14,7 +14,7 @@ namespace core
             void *args;
         };
 
-                template <typename T>
+        template <typename R>
         struct ReturnSlot
         {
             bool has_return = false;
@@ -134,7 +134,7 @@ namespace core
 
         core::Result<Unit, ThreadError> spawn()
         {
-            if (handle != nullptr) return Err{ThreadError{ThreadError::DoubleStart}, 0};
+            if (handle != nullptr) return Err{ThreadError{ThreadError::DoubleStart,0}};
             //maby zero out retern
 
             detail::ThreadStart *s = ::new (core::mlwMalloc(sizeof(detail::ThreadStart))) detail::ThreadStart{&threadCall, params};
