@@ -22,7 +22,9 @@ enum
 
     SYS_FUTEX       = 202,
 
-    SYS_EXIT_GROUP  = 231,
+    SYS_EXIT_GROUP  = 231, //exit full aplication
+
+    SYS_EXIT =  60, // exit thread
 };
 
 
@@ -163,6 +165,38 @@ inline long syscall(long n, long a1, long a2, long a3,
     return ret;
 }
 
+inline long clone(int (*fn)(void*), void* stack_top, long flags,
+                      void* arg, int* ptid, int* ctid)
+{
+    unsigned long top = ((unsigned long)stack_top) & ~15UL;  // 16-align
+    void** s = (void**)top;
+    *--s = (void*)fn;     // [s+8]
+    *--s = arg;           // [s]   (child pops arg first, then fn)
+ 
+    long ret;
+    register long r10 asm("r10") = (long)ctid;   // syscall arg3
+    register long r8  asm("r8")  = 0;            // syscall arg4 = tls = 0
+    asm volatile(
+        "syscall\n\t"
+        "testq %%rax, %%rax\n\t"
+        "jnz 1f\n\t"
+        // ---- child: rsp = s ----
+        "xorl %%ebp, %%ebp\n\t"      // terminate unwind chain
+        "popq %%rdi\n\t"             // arg  -> first-arg reg
+        "popq %%rax\n\t"             // fn
+        "callq *%%rax\n\t"           // fn(arg); rsp now 16-aligned at call
+        "movl %%eax, %%edi\n\t"      // exit code = fn's return
+        "movl $60, %%eax\n\t"        // SYS_exit  (NOT 231/exit_group)
+        "syscall\n\t"
+        "hlt\n\t"
+        "1:\n\t"
+        : "=a"(ret)
+        : "a"((long)SYS_CLONE), "D"(flags), "S"((long)s),
+          "d"((long)ptid), "r"(r10), "r"(r8)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
 //=============================================================================
 // x86 (i386)
 //=============================================================================
@@ -183,7 +217,9 @@ enum
 
     SYS_FUTEX       = 240,
 
-    SYS_EXIT_GROUP  = 252,
+    SYS_EXIT_GROUP  = 252, //exit full aplication
+
+    SYS_EXIT =  1, // exit thread
 };
 
 
@@ -319,7 +355,36 @@ inline long syscall(long n, long a1, long a2,
     return ret;
 }
 
-
+inline long clone(int (*fn)(void*), void* stack_top, long flags,
+                      void* arg, int* ptid, int* ctid)
+{
+    unsigned long top = ((unsigned long)stack_top) & ~15UL;
+    void** s = (void**)top;
+    *--s = arg;           // [s+4]
+    *--s = (void*)fn;     // [s]   child pops fn, leaves arg at [esp]
+ 
+    long ret;
+    register long esi_tls  asm("esi") = 0;          // syscall arg3 = tls = 0
+    register long edi_ctid asm("edi") = (long)ctid; // syscall arg4 = ctid
+    asm volatile(
+        "int $0x80\n\t"
+        "testl %%eax, %%eax\n\t"
+        "jnz 1f\n\t"
+        // ---- child: esp = s, [esp]=fn, [esp+4]=arg ----
+        "xorl %%ebp, %%ebp\n\t"
+        "popl %%ecx\n\t"             // fn  -> ecx (ecx is dead in child)
+        // esp now points at arg; call fn with arg already at [esp] -> [esp+4] after call
+        "calll *%%ecx\n\t"           // fn(arg)
+        "movl %%eax, %%ebx\n\t"      // exit code
+        "movl $1, %%eax\n\t"         // SYS_exit (i386) = 1
+        "int $0x80\n\t"
+        "1:\n\t"
+        : "=a"(ret)
+        : "a"((long)SYS_CLONE), "b"(flags), "c"((long)s),
+          "d"((long)ptid), "r"(esi_tls), "r"(edi_ctid)
+        : "memory");
+    return ret;
+}
 
 #elif defined(MLW_ARM32)
 
@@ -336,8 +401,10 @@ enum
 
     SYS_FUTEX       = 240,
 
-    SYS_EXIT_GROUP  = 248,
-};
+    SYS_EXIT_GROUP  = 248, //exit full aplication
+
+    SYS_EXIT =  1, // exit thread
+    };
 
 inline long syscall(long n)
 {
@@ -456,6 +523,41 @@ inline long syscall(long n, long a1, long a2, long a3,
     return r0;
 }
 
+
+inline long clone(int (*fn)(void*), void* stack_top, long flags,
+                      void* arg, int* ptid, int* ctid)
+{
+    unsigned long top = ((unsigned long)stack_top) & ~7UL;   // 8-align
+    void** s = (void**)top;
+    *--s = arg;           // [s+4]
+    *--s = (void*)fn;     // [s]
+ 
+    register long r7 asm("r7") = (long)SYS_CLONE;
+    register long r0 asm("r0") = flags;      // arg0
+    register long r1 asm("r1") = (long)s;    // arg1 = child stack
+    register long r2 asm("r2") = (long)ptid; // arg2
+    register long r3 asm("r3") = 0;          // arg3 = tls = 0
+    register long r4 asm("r4") = (long)ctid; // arg4
+    asm volatile(
+        "svc #0\n\t"
+        "cmp r0, #0\n\t"
+        "bne 1f\n\t"
+        // ---- child: sp = s, [sp]=fn, [sp+4]=arg ----
+        "mov r11, #0\n\t"            // fp = 0
+        "ldr r2, [sp]\n\t"          // fn
+        "ldr r0, [sp, #4]\n\t"      // arg -> first-arg reg
+        "add sp, sp, #8\n\t"
+        "blx r2\n\t"                // fn(arg)
+        // r0 = fn's return = exit code
+        "mov r7, #1\n\t"            // SYS_exit (arm32) = 1
+        "svc #0\n\t"
+        "1:\n\t"
+        : "+r"(r0)
+        : "r"(r7), "r"(r1), "r"(r2), "r"(r3), "r"(r4)
+        : "memory");
+    return r0;
+}
+
 #elif defined(MLW_ARM64)
 
 enum
@@ -471,7 +573,9 @@ enum
 
     SYS_FUTEX       =  98,
 
-    SYS_EXIT_GROUP  =  94,
+    SYS_EXIT_GROUP  =  94, //exit full aplication
+
+    SYS_EXIT =  93, // exit thread
 };
 
 inline long syscall(long n)
@@ -592,7 +696,37 @@ inline long syscall(long n, long a1, long a2,
 
     return x0;
 }
-
+inline long clone(int (*fn)(void*), void* stack_top, long flags,
+                      void* arg, int* ptid, int* ctid)
+{
+    unsigned long top = ((unsigned long)stack_top) & ~15UL;  // 16-align
+    void** s = (void**)top;
+    s -= 2;               // reserve one 16-byte pair
+    s[0] = (void*)fn;     // [sp]
+    s[1] = arg;           // [sp+8]
+ 
+    register long x8 asm("x8") = (long)SYS_CLONE;
+    register long x0 asm("x0") = flags;      // arg0
+    register long x1 asm("x1") = (long)s;    // arg1 = child stack
+    register long x2 asm("x2") = (long)ptid; // arg2
+    register long x3 asm("x3") = 0;          // arg3 = tls = 0
+    register long x4 asm("x4") = (long)ctid; // arg4
+    asm volatile(
+        "svc #0\n\t"
+        "cbnz x0, 1f\n\t"
+        // ---- child: sp = s, [sp]=fn, [sp+8]=arg ----
+        "mov x29, #0\n\t"                 // fp = 0
+        "ldp x2, x0, [sp], #16\n\t"       // x2=fn, x0=arg ; sp += 16 (stays 16-aligned)
+        "blr x2\n\t"                      // fn(arg)
+        // x0 = fn's return = exit code
+        "mov x8, #93\n\t"                 // SYS_exit (arm64) = 93
+        "svc #0\n\t"
+        "1:\n\t"
+        : "+r"(x0)
+        : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4)
+        : "memory");
+    return x0;
+}
 
 #endif
 
@@ -617,6 +751,7 @@ inline long syscall(long n, long a1, long a2,
 #define MAP_ANON       MAP_ANONYMOUS
 #define MAP_NORESERVE  0x4000
 #define MAP_POPULATE   0x8000
+#define MAP_STACK  0x20000
 
 // mremap flags
 #define MREMAP_MAYMOVE  1
@@ -638,6 +773,18 @@ inline long syscall(long n, long a1, long a2,
 
 #define FUTEX_WAIT_PRIVATE    (FUTEX_WAIT | FUTEX_PRIVATE_FLAG)   // 128
 #define FUTEX_WAKE_PRIVATE    (FUTEX_WAKE | FUTEX_PRIVATE_FLAG)   // 129
+
+
+#define CLONE_VM             0x00000100
+#define CLONE_FS             0x00000200
+#define CLONE_FILES          0x00000400
+#define CLONE_SIGHAND        0x00000800
+#define CLONE_THREAD         0x00010000
+#define CLONE_SYSVSEM        0x00040000
+#define CLONE_SETTLS         0x00080000
+#define CLONE_PARENT_SETTID  0x00100000
+#define CLONE_CHILD_CLEARTID 0x00200000
+
 
 
 static inline int is_err(long r) { return r < 0 && r > -4096; }
@@ -685,12 +832,23 @@ inline void *mremap(void *old_addr, unsigned long old_sz,
     return is_err(r) ? MAP_FAILED : (void *)r;
 }
 
+inline long futex(int* uaddr, int op, int val, const void* timeout /*timespec*/)
+{
+    long r = syscall(SYS_FUTEX, (long)uaddr, op, val, (long)timeout, 0, 0);
+    return is_err(r) ? -1 : r;
+}
+
 extern unsigned long        mlw_pagesize;
 extern int                  mlw_argc;
 extern char**               mlw_argv;
 extern char**               mlw_envp;
 extern const unsigned long* mlw_auxv;
 
+
+struct mlw_timespec {
+    long tv_sec;    // whole seconds
+    long tv_nsec;   // nanoseconds (0 .. 999,999,999)
+};
 
 #elif defined(MLW_MAC)
 #error "mac not implemented"

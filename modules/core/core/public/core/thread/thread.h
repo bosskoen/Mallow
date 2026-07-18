@@ -13,8 +13,11 @@ namespace core
             void (*fn)(void *);
             void *args;
         };
-        void sys_join(io::Handle &);
-        uint32 sys_spawn(io::Handle &, ThreadStart *);
+        
+        void sys_join(void* &);
+        bool try_join(void*&,uint32);
+
+        uint32 sys_spawn(void* &, ThreadStart *);
     }
 
     struct Unit
@@ -25,11 +28,21 @@ namespace core
     {
         enum Kind : uint8
         {
-            CreateFailed
+            CreateFailed,
+            DoubleStart
         } kind;
         uint32 os_code; // GetLastError() / errno — captured at the failure site
         template <core::FormatBuffer Buf>
-        void format(Buf &b) const { mlw_write(b, "ThreadError(create failed, os={})", os_code); }
+        void format(Buf &b) const { switch (kind){
+            case CreateFailed:
+                mlw_write(b, "ThreadError(create failed, os={})", os_code); 
+            break;
+            case DoubleStart:
+            mlw_write(b, "ThreadHandle already running");
+            break;
+        }
+    }
+            
     };
 
     template <typename Fn, typename R = core::invoke_result_t<Fn>>
@@ -69,7 +82,7 @@ namespace core
             }
         }
 
-        io::Handle handle;
+        void* handle = nullptr;
 
     public:
         explicit ThreadHandle(Fn &&f) : handle(0)
@@ -82,7 +95,7 @@ namespace core
         {
             if (!params)
                 return;
-            if (handle.fd != nullptr)
+            if (handle != nullptr)
                 panic("ThreadHandle destroyed without join() being called.");
 
             if constexpr (!core::is_same_v<R, void>)
@@ -105,7 +118,7 @@ namespace core
         ThreadHandle(ThreadHandle &&other) noexcept : params(other.params), handle(other.handle)
         {
             other.params = nullptr;
-            other.handle = 0;
+            other.handle = nullptr;
         }
         ThreadHandle &operator=(ThreadHandle &&other) noexcept
         {
@@ -114,15 +127,17 @@ namespace core
                 params = other.params;
                 handle = other.handle;
                 other.params = nullptr;
-                other.handle = 0;
+                other.handle = nullptr;
             }
             return *this;
         }
 
         core::Result<Unit, ThreadError> spawn()
         {
-            detail::ThreadStart *s = ::new (core::mlwMalloc(sizeof(detail::ThreadStart)))
-                detail::ThreadStart{&threadCall, params};
+            if (handle != nullptr) return Err{ThreadError{ThreadError::DoubleStart}};
+            //maby zero out retern
+
+            detail::ThreadStart *s = ::new (core::mlwMalloc(sizeof(detail::ThreadStart))) detail::ThreadStart{&threadCall, params};
             if (uint32 code = detail::sys_spawn(handle, s); code != 0)
             {
                 core::mlwFree(s); // thread never ran -> IT never frees s -> WE must
@@ -131,10 +146,10 @@ namespace core
             return Unit{};
         }
 
-        core::Result<core::ThreadHandle<Fn>, ThreadError> spawn(Fn &&fn)
+        static core::Result<core::ThreadHandle<Fn>, ThreadError> spawn(Fn &&fn)
         {
             core::ThreadHandle<Fn> h{core::forward<Fn>(fn)}; // OOM here -> panic
-            if (auto r = h.spawn(); r.isErr())
+            if (Result<Unit, ThreadError> r = h.spawn(); r.isErr())
                 return core::Err{r.takeError()};
             return core::move(h); // hand the running thread out
         }
@@ -143,7 +158,7 @@ namespace core
         {
             if (!params)
                 panic("ThreadHandle::join() called on a moved-from ThreadHandle.");
-            if (handle.fd == nullptr)
+            if (handle == nullptr)
                 panic("ThreadHandle::join() call twice or on a non started thread.");
 
             detail::sys_join(handle);
@@ -155,7 +170,7 @@ namespace core
                     R out = core::move(*slot); // move-construct out of the slot
                     slot->~R();                // destroy the moved-from husk in the slot
                     params->ret.has_return = false;
-                    handle = 0;
+                    handle = nullptr;
                     return out;
                 }
                 panic("ThreadHandle::join() called on a thread that did not return a value.");
@@ -167,9 +182,30 @@ namespace core
             }
         };
 
-        //try_join()
+        auto tryJoin(uint32 ms){
+            if constexpr (core::is_same_v<R, void>) {
+                if (!params || handle == nullptr) return true;   // nothing to wait on = "done"
+                return detail::try_join(handle, ms);
+            }else{
+               if (!params || handle.fd == 0) return Optional<R>{}; 
+                if (!detail::try_join(handle, ms)) return Optional<R>{}; 
+                if (params->ret.has_return)
+                {
+                    R *slot = reinterpret_cast<R *>(params->ret.result);
+                    Optional<R> out{ core::move(*slot)}; // move-construct out of the slot
+                    slot->~R();                // destroy the moved-from husk in the slot
+                    params->ret.has_return = false;
+                    handle = nullptr;
+                    return out;
+                }
+                return Optional<R>{}; 
+            }
+        }
+        MLW_FORCE_INLINE bool joinable() const {
+            if (!params || handle.fd == 0) return false; 
+        }
+
         //detach()
-        //joinable()
     };
 
 } // namespace core
