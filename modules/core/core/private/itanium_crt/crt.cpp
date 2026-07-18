@@ -41,7 +41,7 @@ extern const unsigned long* mlw_auxv;
 // The compiler calls __cxa_atexit(dtor, arg, dso) from each global's ctor to
 // register its destructor. This replaces the plain atexit() the MSVC ABI uses.
 // __dso_handle identifies "this module"; for a single executable we ignore it.
-extern "C" void* __dso_handle = nullptr;
+extern "C"{ void* __dso_handle = nullptr;}
 
 extern "C" unsigned long __getauxval(unsigned long type)
 {
@@ -220,7 +220,7 @@ void* mlw_setup_main_tls(usize& leng)
     const Elf_Phdr* t = nullptr;
     for (unsigned long i = 0; i < n; i++)
         if (phdr[i].type == PT_TLS) { t = &phdr[i]; break; }
-    if (!t) return;                                   // no thread_local in program
+    if (!t) return nullptr;                                   // no thread_local in program
 
     const uptr WORD = sizeof(void*);                  // 4 on 32-bit, 8 on 64-bit
     const uptr TCB  = 2 * WORD;                        // reserved control block
@@ -233,7 +233,7 @@ void* mlw_setup_main_tls(usize& leng)
     leng = mlw_align_up(reserve + t->memsz + align, mlw_pagesize);
     char* raw = (char*)mmap(nullptr, leng,
                             PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (raw == (char*)MAP_FAILED) return;
+    if (raw == (char*)MAP_FAILED) return nullptr;
     char* base = (char*)mlw_align_up((uptr)raw, align);
     char* data = base + reserve;
     for (unsigned long i = 0; i < t->filesz; i++) data[i] = img[i];   // .tbss stays 0
@@ -253,7 +253,7 @@ void* mlw_setup_main_tls(usize& leng)
     leng = mlw_align_up(tsize + TCB + align, mlw_pagesize);
     char* raw = (char*)mmap(nullptr, leng,
                             PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (raw == (char*)MAP_FAILED) return;
+    if (raw == (char*)MAP_FAILED) return nullptr;
     uptr  tp   = mlw_align_up((uptr)raw + tsize, align);  // TP aligned, tsize below it
     char* data = (char*)(tp - tsize);
     for (unsigned long i = 0; i < t->filesz; i++) data[i] = img[i];

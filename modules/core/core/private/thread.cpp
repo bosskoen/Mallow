@@ -89,6 +89,7 @@ int threadEntry(void *s)
     core::ThreadCache::mlw__crt_distroy_tc_storage();
     core::detail::mlw__crt_distroy_format_buffer();
 
+    //could be nullptr but if that is julst let it crash. it sould have chashed already.
     munmap(tls_base, tls_size);
 
     return 0; // -> wrapper does SYS_exit (thread!), kernel clears tid + futex_wake
