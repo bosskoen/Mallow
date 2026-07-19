@@ -5,6 +5,42 @@
 
 #include "core/../../private/crt_internals.h"
 
+#include <core/proc_context.h>
+
+#if MLW_WINDOWS
+#include <windows.h>
+
+// call AFTER your allocator is up (you're deferring this — good)
+void mlw_build_win_args() {
+    int wargc = 0;
+    LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+    // wargv[i] is a null-terminated UTF-16 string; wargc is the count
+
+    // 1. array of char* pointers, +1 for the NULL terminator (Linux convention)
+    char** argv = (char**)core::mlwMalloc((wargc + 1) * sizeof(char*));
+
+    for (int i = 0; i < wargc; ++i) {
+        // 2. how many UTF-8 bytes does this wide string need?
+        int len = WideCharToMultiByte(
+            CP_UTF8, 0,        // UTF-8, no special flags
+            wargv[i], -1,      // -1 = source is null-terminated, measure whole thing
+            nullptr, 0,        // null dst + 0 size = "just tell me the byte count"
+            nullptr, nullptr);
+        // len includes the null terminator
+
+        // 3. allocate and actually convert
+        char* s = (char*)core::mlwMalloc(len);
+        WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, s, len, nullptr, nullptr);
+        argv[i] = s;
+    }
+    argv[wargc] = nullptr;    // NULL-terminate the array, like Linux argv
+
+    core::PROC_CONTEXT.argc = wargc;
+    core::PROC_CONTEXT.argv = argv;
+
+    LocalFree(wargv);         // <-- MUST free what CommandLineToArgvW returned
+}
+#endif
 
 
 
@@ -22,11 +58,9 @@ extern "C" void mlwStart(){
     crt::run_global_ctors();
     crt::run_thread_local_ctors();
 
-
-    //comand line parsing
-    // core::terminal::args.count = c;
-    // core::terminal::args.values = v;
-
+#if MLW_WINDOWS
+    mlw_build_win_args();
+#endif
     int32 cr =  mallowMain();
 
     core::mlwExit(cr);
@@ -39,11 +73,7 @@ extern "C" void mlwStart(){
 #if defined(MLW_LINUX)
 #include <core/../../private/posix/syscall_api.h>
 
-unsigned long        mlw_pagesize;
-int                  mlw_argc;
-char**               mlw_argv;
-char**               mlw_envp;
-const unsigned long* mlw_auxv;
+
 
 #define AT_PAGESZ 6
 #if defined(MLW_ARM64)
@@ -73,18 +103,35 @@ asm(".text\n.balign 4\n.global _start\n.type _start,%function\n_start:\n\t mov r
 //  MLW_ARM32: same structure as ARM64 (Variant I, 8-byte TCB); by analogy.
 // ===========================================================================
 
-void* mlw_setup_main_tls(usize& leng);
+
+
+void* mlw_setup_main_tls(usize& leng, usize page_size);
  
+
+extern const unsigned long* mlw_crt_auxv; 
+
 extern "C" void mlwStart();
 extern "C" void _start_c(unsigned long* sp){
-    long argc=(long)sp[0]; char** argv=(char**)(sp+1); char** envp=argv+argc+1;
+    long argc=(long)sp[0]; 
+    char** argv=(char**)(sp+1); 
+    char** envp=argv+argc+1;
     char** e=envp; while(*e) ++e;
     auto auxv=(const unsigned long*)(e+1);
-    mlw_argc=(int)argc; mlw_argv=argv; mlw_envp=envp; mlw_auxv=auxv;
-    for(auto a=auxv;a[0];a+=2) if(a[0]==AT_PAGESZ){ mlw_pagesize=a[1]; break; }
+
+    mlw_crt_auxv=auxv;
+    
+     usize page = 4096;                        // fallback
+    for (auto a = auxv; a[0]; a += 2)
+        if (a[0] == AT_PAGESZ) { page = a[1]; break; } 
+
 
     usize dummy;
-    mlw_setup_main_tls(dummy);
+    mlw_setup_main_tls(dummy, page);
+
+    core::PROC_CONTEXT.argc = (index_t)argc;
+    core::PROC_CONTEXT.argv = argv;
+    core::PROC_CONTEXT.envp = envp;
+
     mlwStart();
 }
 #endif

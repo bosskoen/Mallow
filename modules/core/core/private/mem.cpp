@@ -15,6 +15,7 @@
 
 #include "crt_internals.h"
 #include "memory/galloc.h"
+#include "proc_context.h"
 
 static core::sync::Atomic<uint32> thread_id_counter{ 0 };
 const thread_local uint32 core::thread_id = thread_id_counter.fetchAdd(1, core::sync::MemoryOrder::Relaxed);
@@ -57,14 +58,14 @@ constinit core::PlatformInfo core::PLATFORM_INFO {};
 
 void core::detail::mlw__crt_init_platforminf()
 {
-	#if defined(MLW_WINDOWS)
-			SYSTEM_INFO si;
-			GetSystemInfo(&si);
-			PLATFORM_INFO = { (usize)si.dwPageSize, (usize)si.dwPageSize - 1, MLW_CTZ((usize)si.dwPageSize), (usize)si.dwAllocationGranularity, (usize)si.dwAllocationGranularity - 1, MLW_CTZ((usize)si.dwAllocationGranularity) };
-#elif defined(MLW_LINUX) || defined(MLW_MAC)
-			usize page = (usize)mlw_pagesize;
-			PLATFORM_INFO = { page, page - 1, MLW_CTZ(page), page, page - 1, MLW_CTZ(page) };
-#else
-#error "Unsupported platform"
-#endif
+    core::SysInfo si = core::PROC_CONTEXT.getSysInfo();
+
+	PLATFORM_INFO = { .page_size = si.page_size,
+        .page_mask   = si.page_size - 1,
+        .page_shift= MLW_CTZ(si.page_size),
+        .alloc_granularity  = si.alloc_gran,
+        .gran_mask= si.alloc_gran - 1,
+        .gran_shift= MLW_CTZ(si.alloc_gran) };
+
+
 }

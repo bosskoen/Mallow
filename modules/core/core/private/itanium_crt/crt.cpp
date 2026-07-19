@@ -33,7 +33,7 @@ void run_global_ctors() {
 }
 }
 
-extern const unsigned long* mlw_auxv;
+const unsigned long* mlw_crt_auxv = nullptr;
 
 // ════════════════════════════════════════════════════════════════════════
 // 2. Global destructors — __cxa_atexit / __dso_handle
@@ -45,7 +45,7 @@ extern "C"{ void* __dso_handle = nullptr;}
 
 extern "C" unsigned long __getauxval(unsigned long type)
 {
-    for (const unsigned long* p = mlw_auxv; p && p[0]; p += 2)
+    for (const unsigned long* p = mlw_crt_auxv; p && p[0]; p += 2)
         if (p[0] == type)          // p[0] = a_type, p[1] = a_val
             return p[1];
     return 0;                      // not found (safe: libgcc reads this as "no LSE")
@@ -212,7 +212,7 @@ enum { AT_PHDR = 3, AT_PHNUM = 5, PT_TLS = 7 };
 
 static uptr mlw_align_up(uptr x, uptr a) { return (x + a - 1) & ~(a - 1); }
 
-void* mlw_setup_main_tls(usize& leng)
+void* mlw_setup_main_tls(usize& leng, usize pagesize)
 {
     // --- common: locate the program's TLS template via the aux vector ------
     auto phdr = (const Elf_Phdr*)__getauxval(AT_PHDR);
@@ -230,7 +230,7 @@ void* mlw_setup_main_tls(usize& leng)
 #if defined(MLW_ARM64) || defined(MLW_ARM32)
     // ---- Variant I: TP -> TCB, data above ---------------------------------
     uptr reserve = mlw_align_up(TCB, align);
-    leng = mlw_align_up(reserve + t->memsz + align, mlw_pagesize);
+    leng = mlw_align_up(reserve + t->memsz + align, pagesize);
     char* raw = (char*)mmap(nullptr, leng,
                             PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (raw == (char*)MAP_FAILED) return nullptr;
@@ -250,7 +250,7 @@ void* mlw_setup_main_tls(usize& leng)
 #else
     // ---- Variant II: TP -> TCB at top, data below -------------------------
     uptr tsize = mlw_align_up(t->memsz, align);        // size of the data region
-    leng = mlw_align_up(tsize + TCB + align, mlw_pagesize);
+    leng = mlw_align_up(tsize + TCB + align, pagesize);
     char* raw = (char*)mmap(nullptr, leng,
                             PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (raw == (char*)MAP_FAILED) return nullptr;

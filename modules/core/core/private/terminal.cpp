@@ -8,9 +8,6 @@
 
 namespace core::terminal
 {
-    Args args{ 0, nullptr };
-
-
     io::Handle stdoutHandle()
     {
 #if defined(MLW_WINDOWS)

@@ -25,6 +25,8 @@ enum
     SYS_EXIT_GROUP  = 231, //exit full aplication
 
     SYS_EXIT =  60, // exit thread
+
+    SYS_SCHED_GETAFFINITY = 204,
 };
 
 
@@ -220,6 +222,7 @@ enum
     SYS_EXIT_GROUP  = 252, //exit full aplication
 
     SYS_EXIT =  1, // exit thread
+    SYS_SCHED_GETAFFINITY = 242,
 };
 
 
@@ -404,6 +407,7 @@ enum
     SYS_EXIT_GROUP  = 248, //exit full aplication
 
     SYS_EXIT =  1, // exit thread
+    SYS_SCHED_GETAFFINITY = 241,
     };
 
 inline long syscall(long n)
@@ -576,6 +580,8 @@ enum
     SYS_EXIT_GROUP  =  94, //exit full aplication
 
     SYS_EXIT =  93, // exit thread
+
+    SYS_SCHED_GETAFFINITY = 123,
 };
 
 inline long syscall(long n)

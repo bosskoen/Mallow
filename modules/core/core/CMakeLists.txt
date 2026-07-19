@@ -57,6 +57,8 @@ target_sources(core
         private/math/helpers.hpp
         private/math/log.cpp
         private/thread.cpp
+        public/core/proc_context.h
+        private/proc_context.cpp
 )
 
 if(MLW_ABI_MSVC)

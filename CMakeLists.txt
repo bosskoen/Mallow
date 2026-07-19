@@ -44,7 +44,7 @@ else()
     add_compile_options(-fno-rtti -fno-exceptions -ffreestanding -fno-stack-protector -fno-math-errno)
     add_link_options(-nostdlib -static -fno-pie)
 
-    link_libraries(-static-libgcc)
+    link_libraries(gcc)
 
 
    if(MLW_ARCH_X64 OR MLW_ARCH_X86)

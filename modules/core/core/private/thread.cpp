@@ -51,8 +51,9 @@ bool core::detail::try_join(void* &h, uint32 ms)
 #elif defined(MLW_LINUX)
 
 #include "posix/syscall_api.h"
+#include "libc/mem.h"
 
-void *mlw_setup_main_tls(usize &leng);
+void *mlw_setup_main_tls(usize &leng, usize pagesize);
 
     constexpr int MLW_CLONE_FLAGS =
         CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD |
@@ -70,13 +71,13 @@ struct LinuxThreadState
 long ms_wait(volatile int *word, int expect, uint32 ms)
 {
     timespec ts{(long)(ms / 1000), (long)((ms % 1000) * 1000000L)};
-    return futex((int *)word, FUTEX_WAIT_PRIVATE, expect, ms ? &ts : nullptr);
+    return futex((int *)word, FUTEX_WAIT, expect, ms ? &ts : nullptr);
 }
 
 int threadEntry(void *s)
 {
     usize tls_size;
-    void *tls_base = mlw_setup_main_tls(tls_size);
+    void *tls_base = mlw_setup_main_tls(tls_size, core::PLATFORM_INFO.page_size);
 
     core::ThreadCache::mlw__first_crt_ctor(); // the load-bearing one
     crt::run_thread_local_ctors();            // no-op on Itanium, kept for symmetry

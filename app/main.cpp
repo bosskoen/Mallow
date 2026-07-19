@@ -5,7 +5,7 @@
 // thread_tests.cpp verification suite for core::ThreadHandle.
 //
 // The point of these tests is NOT "does it print" (that passes even when the
-// memory is corrupt). Each test asserts on COUNTS — copies, live heap blocks —
+// memory is corrupt). Each test asserts on COUNTS ï¿½ copies, live heap blocks ï¿½
 // because that is the only way the silent failure modes become visible.
 //
 // Adapt names to your project if they differ:
@@ -39,7 +39,7 @@ struct MoveOnly {
 };
 
 // 
-// T1 — baseline: void return, no capture.
+// T1 ï¿½ baseline: void return, no capture.
 // Catches: nothing subtle. Confirms ResultSlot<void> compiles (the C3646 fix)
 //          and the void join path returns cleanly.
 // Expect:  prints "t1". No probe activity.
@@ -51,7 +51,7 @@ static void t1_void() {
 }
 
 // 
-// T2 — trivial return value.
+// T2 ï¿½ trivial return value.
 // Catches: broken placement-new-into-slot or broken move-out-of-slot for a
 //          trivial R (you'd get a garbage int).
 // Expect:  r == 42.
@@ -64,7 +64,7 @@ static void t2_int() {
 }
 
 // 
-// T3 — non-trivial return, THE leak/double-free test.
+// T3 ï¿½ non-trivial return, THE leak/double-free test.
 // Catches: (a) freeing slot storage without running ~R   live != 0 (leak)
 //          (b) running ~R twice on a live object        -> live goes negative / crash
 //          (c) any accidental copy                      -> copy != 0
@@ -85,7 +85,7 @@ static void t3_probe_return() {
 }
 
 // 
-// T4 — move-only return. This is a COMPILE-TIME test.
+// T4 ï¿½ move-only return. This is a COMPILE-TIME test.
 // Catches: any code path that requires copying R (threadCall or join). If your
 //          join used copy instead of move, this file would not compile.
 // Expect:  compiles, r.val == 99.
@@ -98,7 +98,7 @@ static void t4_move_only_return() {
 }
 
 // 
-// T5 — init-capture move: big value moved INTO the closure, never copied.
+// T5 ï¿½ init-capture move: big value moved INTO the closure, never copied.
 // Catches: the closure being copied instead of moved into `params` (forward<Fn>
 //          wrong), or [=] semantics leaking in. Also proves move-only closures
 //          survive the whole pipeline.
@@ -118,7 +118,7 @@ static void t5_capture_move() {
 }
 
 // 
-// T6 — destructor on a NEVER-SPAWNED handle.
+// T6 ï¿½ destructor on a NEVER-SPAWNED handle.
 // Catches: dtor that frees `params` storage but forgets ~ThreadParameters
 //          (i.e. ~Fn). The captured probe would leak -> live != 0.
 // Expect:  no panic (handle.fd==0); copy==0; live==0.
@@ -135,7 +135,7 @@ static void t6_never_spawned() {
 }
 
 // 
-// T7 — spawned-and-joined completes cleanly (state-machine happy path).
+// T7 ï¿½ spawned-and-joined completes cleanly (state-machine happy path).
 // Catches: has_return not reset after join -> dtor re-runs ~R (double). With a
 //          Probe, a stale has_return would double-free -> crash / live<0.
 // Expect:  live==0; copy==0.
@@ -153,7 +153,7 @@ static void t7_spawn_join_clean() {
 }
 
 // 
-// T8 — handle MOVE after spawn. The critical ownership test.
+// T8 ï¿½ handle MOVE after spawn. The critical ownership test.
 // Catches: move ctor not nulling source's params/handle -> double-free of
 //          params or double-close of the OS handle when both dtors run. Also:
 //          moved-from source must not panic even though it "was spawned".
@@ -173,7 +173,7 @@ static void t8_handle_move() {
 }
 
 // 
-// T9 — two concurrent handles, no cross-talk.
+// T9 ï¿½ two concurrent handles, no cross-talk.
 // Catches: shared/static params or ThreadStart clobbering between threads.
 // Expect:  ra==10, rb==20; live==0.
 // 
@@ -194,9 +194,9 @@ static void t9_two_threads() {
 }
 
 // 
-// T10 — destroy a STILL-JOINABLE handle. This test intentionally PANICS.
+// T10 ï¿½ destroy a STILL-JOINABLE handle. This test intentionally PANICS.
 // Run it ALONE, expect your panic_mem("destroyed while joinable"). Note the
-// panic fires regardless of whether the child already finished — it keys on
+// panic fires regardless of whether the child already finished ï¿½ it keys on
 // handle.fd != 0 (join is what nulls it), not on thread state.
 // Guarded so the normal run doesn't abort.
 // 
@@ -209,6 +209,8 @@ static void t10_destroy_joinable_panics() {
 #endif
 
 int32 mallowMain() {
+    println("pagesize = {}", core::PLATFORM_INFO.page_size);
+
     t1_void();               println("T1  void .................. ok");
     t2_int();                println("T2  int return ............ ok");
     t3_probe_return();       println("T3  probe return .......... ok (copy=0, no leak)");
