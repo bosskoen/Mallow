@@ -1,6 +1,14 @@
 #pragma once
 #include "typedef.h"
 
+/// \file
+/// \brief Compiler and architecture compatibility macros and helpers.
+///
+/// This header exposes small portability shims (likely/unlikely, force-inline,
+/// count-trailing-zeros, fences, debugbreak, etc.) that map to compiler/arch
+/// builtins. Only the public macros are documented here; implementations are
+/// platform-specific and intentionally terse.
+
 #if !defined(MLW_X64) && !defined(MLW_ARM64) && !defined(MLW_X86) && !defined(MLW_ARM32)
 #error "unknown architecture - add architecture specific definitions"
 #endif
@@ -16,7 +24,15 @@
 
 #endif
 
+/// \def MLW_LAUNDER(ptr)
+/// \brief Laxly obtain a pointer to an object after placement-new.
+///
+/// `MLW_LAUNDER(ptr)` maps to `std::launder`/compiler builtin where needed to
+/// restrict optimizer assumptions about object identity after placement-new.
+/// On platforms where no launder is required it is a no-op.
+
 #if defined(MLW_GCC) || defined(MLW_CLANG)
+
 #define MLW_LAUNDER(ptr) __builtin_launder(ptr)
 #elif defined(MLW_MSVC)
 // launder emits no code anywhere; it only restrains optimizer assumptions about
@@ -26,36 +42,60 @@
 #define MLW_LAUNDER(ptr) (ptr)
 #endif
 
+/// \def MLW_LIKELY(x)
+/// \brief Hint to the optimizer that `x` is usually true.
+/// Maps to `__builtin_expect` on GCC/Clang; a no-op elsewhere.
+
+/// \def MLW_UNLIKELY(x)
+/// \brief Hint to the optimizer that `x` is usually false.
+/// Maps to `__builtin_expect` on GCC/Clang; a no-op elsewhere.
 
 #if defined(MLW_GCC) || defined(MLW_CLANG)
-    #define MLW_LIKELY(x)   (__builtin_expect(!!(x), 1))
-    #define MLW_UNLIKELY(x) (__builtin_expect(!!(x), 0))
+	#define MLW_LIKELY(x)   (__builtin_expect(!!(x), 1))
+	#define MLW_UNLIKELY(x) (__builtin_expect(!!(x), 0))
 #else                       // MSVC and anything else: no-op, still correct
     #define MLW_LIKELY(x)   (x)
     #define MLW_UNLIKELY(x) (x)
 #endif
 
+/// \def MLW_CTZ(x)
+/// \brief Count trailing zero helpers.
+///
+/// `MLW_CTZ(x)` returns the number of trailing zero bits.
+/// These map to efficient compiler intrinsics where available.
+
 #if defined(MLW_MSVC)
+/// \cond
 static __forceinline usize mlw_ctz64(uint64 x)
 {
 	unsigned long idx;
 	_BitScanForward64(&idx, x);
 	return static_cast<usize>(idx);
 }
+/// \endcond
+
 #define MLW_CTZ(x) mlw_ctz64(x)
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
 
 #define MLW_CTZ(x) static_cast<usize>(__builtin_ctzll(x))
 #endif
 
-#if defined(MLW_MSVC)
 
+/// \def MLW_CLZ(x)
+/// \brief Count leading zero helpers.
+///
+/// `MLW_CTZ(x)` returns the number of leading zero bits.
+/// These map to efficient compiler intrinsics where available.
+
+#if defined(MLW_MSVC)
+/// \cond
 static __forceinline usize mlw_clz64(uint64 x)
 {
 	unsigned long idx;
 	_BitScanReverse64(&idx, x);
 	return 63u - static_cast<usize>(idx);
 }
+/// \endcond
 
 #define MLW_CLZ(x) mlw_clz64(x)
 
@@ -65,6 +105,9 @@ static __forceinline usize mlw_clz64(uint64 x)
 
 #endif
 
+/// \def MLW_FORCE_INLINE
+/// \brief Force an inline request to the compiler where supported.
+
 #if defined(MLW_MSVC)
 #define MLW_FORCE_INLINE __forceinline
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
@@ -73,6 +116,9 @@ static __forceinline usize mlw_clz64(uint64 x)
 #define MLW_FORCE_INLINE inline
 #endif
 
+/// \def MLW_NO_RETURN
+/// \brief Function attribute indicating the function does not return.
+
 #if defined(MLW_MSVC)
 #define MLW_NO_RETURN __declspec(noreturn)
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
@@ -80,6 +126,30 @@ static __forceinline usize mlw_clz64(uint64 x)
 #else
 #define MLW_NO_RETURN [[noreturn]]
 #endif
+
+
+
+/// \defgroup memory_order Memory Order Constants
+/// \brief Ordering values passed to the `Atomic` helpers.
+///
+/// On GCC/Clang these map directly to the `__atomic` builtins. On MSVC the
+/// interlocked intrinsics are always sequentially consistent, so `Atomic`
+/// ignores these values and always emits a full barrier — they exist there
+/// only for source compatibility. Never depend on the numeric values.
+/// @{
+
+/// \def MLW_MO_RELAXED
+/// \brief No ordering, only atomicity.
+/// \def MLW_MO_ACQUIRE
+/// \brief Later reads/writes cannot move before this load.
+/// \def MLW_MO_RELEASE
+/// \brief Earlier reads/writes cannot move after this store.
+/// \def MLW_MO_ACQ_REL
+/// \brief Both acquire and release, for read-modify-write ops.
+/// \def MLW_MO_SEQ_CST
+/// \brief Full sequential consistency (single total order).
+
+/// @}
 
 #if defined(MLW_MSVC)
 // MSVC interlocked functions are always seq_cst on x86
@@ -99,6 +169,10 @@ static __forceinline usize mlw_clz64(uint64 x)
 #define MLW_MO_SEQ_CST __ATOMIC_SEQ_CST
 #endif
 
+
+
+
+/// \cond
 #if defined(MLW_MSVC)
 #if defined(MLW_X64) || defined(MLW_X86)
 // forward declare MSVC x86/x64 intrinsics manually
@@ -118,6 +192,30 @@ extern "C" void __yield();
 extern "C" void __dmb(unsigned int);
 #endif
 #endif
+/// \endcond
+
+/// \defgroup fences Compiler Barriers and CPU Fences
+/// \brief Compiler-reordering barriers, CPU memory fences, and spin hints.
+///
+/// Each maps to the architecture's native instruction (x86 `mfence`/`lfence`/
+/// `sfence`, ARM `dmb` variants) or, for the compiler barrier, an empty asm
+/// clobber. These order memory at the CPU level; they are unrelated to
+/// \ref MLW_LAUNDER, which only restrains the compiler's object-identity model.
+/// @{
+
+/// \def MLW_COMPILER_BARRIER
+/// \brief Prevent the compiler from reordering memory ops across this point.
+///        Emits no CPU instruction.
+/// \def MLW_CPU_PAUSE
+/// \brief Spin-loop hint (x86 `pause`, ARM `yield`); reduces contention.
+/// \def MLW_FENCE_FULL
+/// \brief Full memory barrier: no load or store crosses in either direction.
+/// \def MLW_FENCE_LOAD
+/// \brief Load-acquire barrier: orders loads before later memory ops.
+/// \def MLW_FENCE_STORE
+/// \brief Store-release barrier: orders stores after earlier memory ops.
+
+/// @}
 
 #if defined(MLW_MSVC)
 #define MLW_COMPILER_BARRIER() _ReadWriteBarrier()
@@ -147,12 +245,19 @@ extern "C" void __dmb(unsigned int);
 #endif
 #endif
 
+
+
 #if defined(MLW_MSVC)
 
 #elif defined(MLW_GCC) || defined(MLW_CLANG)
 
 #endif
 
+/// \def MLW_DEBUGBREAK()
+/// \brief Injects a breakpoint instruction for use while debugging.
+///
+/// \warning Only use when a debugger is attached; otherwise behavior may be
+/// unpredictable.
 #if defined(MLW_DEBUG)
 #if defined(MLW_MSVC)
 #define MLW_DEBUGBREAK() __debugbreak()
@@ -169,6 +274,10 @@ extern "C" void __dmb(unsigned int);
 #define MLW_DEBUGBREAK()
 #endif
 
+/// \def MLW_UNREACHABLE()
+/// \brief Hint that a code path is unreachable to the optimizer.
+///
+/// Expands to a compiler builtin where available; otherwise expands to a no-op.
 #if defined(MLW_MSVC)
 #define MLW_UNREACHABLE() __assume(0)
 #elif defined(MLW_GCC) || defined(MLW_CLANG)

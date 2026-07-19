@@ -32,6 +32,18 @@ set(DOXYGEN_GENERATE_LATEX       NO)
 set(DOXYGEN_GENERATE_TREEVIEW    YES)
 set(DOXYGEN_QUIET                YES)
 
+# Define the platform macros for the Doxygen run.
+# Doxygen only follows one conditional branch at a time, so use the current
+# build host to generate docs matching the platform-specific API shape.
+if(WIN32)
+    set(DOXYGEN_PREDEFINED "MLW_WINDOWS" "MLW_X64" "MLW_DEBUG")
+else()
+    set(DOXYGEN_PREDEFINED "MLW_GCC" "MLW_X64" "MLW_DEBUG")
+endif()
+set(DOXYGEN_MACRO_EXPANSION YES)
+set(DOXYGEN_EXPAND_ONLY_PREDEF YES)
+
+
 # --- dependency graphs (need the `dot` component from Graphviz) -------------
 if(TARGET Doxygen::dot)
     set(DOXYGEN_HAVE_DOT            YES)

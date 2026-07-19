@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/io/handle.h"
 #include "core/traits.h"
 #include "core/libc/mem.h"
 #include "core/result.h"
