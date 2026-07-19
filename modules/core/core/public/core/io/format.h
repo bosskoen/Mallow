@@ -2,6 +2,12 @@
 #include "../c_string.h"
 #include "../libc/math.h"
 
+
+/// \defgroup formattable Formattable Types
+/// Types printable through the format API. Each implements a format()
+/// customization point that the format core calls; you don't call it directly.
+
+
 namespace core
 {
 

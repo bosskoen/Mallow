@@ -5,7 +5,7 @@
             "label": "Test",
             "type": "shell",
             "command": "tools/test.sh",
-            "windows" :{
+            "windows": {
                 "command": "tools\\test.bat"
             }
         },
@@ -13,49 +13,73 @@
             "label": "Build",
             "type": "shell",
             "command": "tools/build.sh",
-            "windows": { "command": "tools\\build.bat" }
+            "windows": {
+                "command": "tools\\build.bat"
+            }
         },
         {
             "label": "Clean",
             "type": "shell",
             "command": "tools/clean.sh",
-            "windows": { "command": "tools\\clean.bat" }
+            "windows": {
+                "command": "tools\\clean.bat"
+            }
         },
         {
             "label": "Clean_all",
             "type": "shell",
             "command": "tools/clean_all.sh",
-            "windows": { "command": "tools\\clean_all.bat" }
+            "windows": {
+                "command": "tools\\clean_all.bat"
+            }
         },
         {
             "label": "Run",
             "type": "shell",
             "command": "tools/run.sh",
-            "windows": { "command": "tools\\run.bat" }
+            "windows": {
+                "command": "tools\\run.bat"
+            }
         },
         {
             "label": "Rebuild",
             "type": "shell",
             "command": "tools/rebuild.sh",
-            "windows": { "command": "tools\\rebuild.bat" }
+            "windows": {
+                "command": "tools\\rebuild.bat"
+            }
         },
         {
             "label": "Run_r",
             "type": "shell",
             "command": "tools/run.sh Release",
-            "windows": { "command": "tools\\run.bat Release" }
+            "windows": {
+                "command": "tools\\run.bat Release"
+            }
         },
         {
             "label": "Rebuild_r",
             "type": "shell",
             "command": "tools/rebuild.sh Release",
-            "windows": { "command": "tools\\rebuild.bat Release" }
+            "windows": {
+                "command": "tools\\rebuild.bat Release"
+            }
         },
         {
             "label": "Build_r",
             "type": "shell",
             "command": "tools/build.sh Release",
-            "windows": { "command": "tools\\build.bat Release" }
+            "windows": {
+                "command": "tools\\build.bat Release"
+            }
+        },
+        {
+            "label": "docs",
+            "type": "shell",
+            "command": "tools/gen_docs.sh",
+             "windows": {
+                "command": "tools\\gen_docs.bat"
+            }
         },
     ]
 }

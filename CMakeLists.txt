@@ -10,6 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/definitions.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/definitions.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/warnings.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/Docs.cmake)
 
 add_compile_definitions(FREE_MLW_BUILD)
 
