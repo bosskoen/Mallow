@@ -51,7 +51,7 @@
         }                                                                                                     \
         else                                                                                                  \
         {                                                                                                     \
-            core::FormatBufferType &__format_write_buf = core::detail::getFormatBuffer();                                    \
+            core::detail::FormatBufferType &__format_write_buf = core::detail::getFormatBuffer();                                    \
             __format_write_buf.len = 0;                                                                                      \
             mlw_write(__format_write_buf, format_str, ##__VA_ARGS__);                                                        \
             if constexpr (newline)                                                                            \

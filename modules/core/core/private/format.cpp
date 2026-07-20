@@ -76,7 +76,7 @@ namespace core::detail
 	}
 }
 
-void core::FormatBufferType::realocate()
+void core::detail::FormatBufferType::realocate()
 {
 #if defined(MLW_WINDOWS)
 
@@ -126,7 +126,7 @@ void core::FormatBufferType::realocate()
 #endif
 }
 
-void core::FormatBufferType::append(const CStr &str)
+void core::detail::FormatBufferType::append(const CStr &str)
 {
 	while (len + str.len > capacity)
 	{
@@ -137,7 +137,7 @@ void core::FormatBufferType::append(const CStr &str)
 	len += str.len;
 }
 
-void core::FormatBufferType::append(const uint8 value)
+void core::detail::FormatBufferType::append(const uint8 value)
 {
 	while (len + 1 > capacity)
 	{

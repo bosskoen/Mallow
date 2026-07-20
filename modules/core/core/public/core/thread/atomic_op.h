@@ -2,8 +2,25 @@
 #include "../compilers.h"
 #include "../traits.h"
 
+/// \file
+/// \brief Low-level atomic primitives and the MemoryOrder enum.
+///
+/// Raw atomic operations (fetch-add/sub, load, store, exchange, compare-
+/// exchange) mapping to compiler builtins: `__atomic_*` on GCC/Clang, the
+/// Interlocked/intrinsic path on MSVC — where every operation is full-barrier
+/// sequentially consistent regardless of the requested MemoryOrder.
+///
+/// \note This is the low-level layer. Prefer core::Atomic<T> for normal use; it
+///       selects the right memory order and hides the per-compiler differences.
+///       Reach for these raw ops only for a size or ordering variant that
+///       core::Atomic<T> does not expose.
+
+/// \defgroup atomic_lowlevel Low-level Atomic Operations
+/// \brief Raw atomic primitives. Prefer core::Atomic<T> for normal use.
+
 #if defined(MLW_MSVC)
 
+/// \cond
 extern "C"
 {
     char _InterlockedExchangeAdd8(volatile char *, char);
@@ -183,13 +200,14 @@ extern "C"
 #endif // MLW_ARM64 || MLW_ARM32
 
 #endif // MLW_MSVC
+/// \endcond
 
 namespace core::sync
 {
 
     namespace detail
     {
-        // convert any atomic-eligible type to its integer representation
+        /// \brief convert any atomic-eligible type to its integer representation
         template <typename T>
         MLW_FORCE_INLINE auto toInt(T val)
         {
@@ -199,7 +217,7 @@ namespace core::sync
                 return val;
         }
 
-        // convert back from integer representation to T
+        /// \brief convert back from integer representation to T
         template <typename T, typename I>
         MLW_FORCE_INLINE T fromInt(I val)
         {
@@ -210,23 +228,41 @@ namespace core::sync
         }
     }
 
+    /// \brief Memory ordering for atomic operations.
+    ///
+    /// The single ordering enum used across the atomics: both core::Atomic<T> and
+    /// the low-level `mlw*` primitives take it. Values match the project's
+    /// `MLW_MO_*` constants (which map to the native `__ATOMIC_*` builtins on
+    /// GCC/Clang). Listed weakest-to-strongest, so the compare-exchange helpers can
+    /// check that a failure order is no stronger than the success order.
+    ///
+    /// \note On MSVC these are advisory: interlocked operations are always
+    ///       sequentially consistent, so a weaker order still emits a full barrier.
+    ///       This applies to both core::Atomic<T> and the raw primitives.
     enum class MemoryOrder : int32
     {
-        Relaxed = MLW_MO_RELAXED,
-        Acquire = MLW_MO_ACQUIRE,
-        Release = MLW_MO_RELEASE,
-        AcqRel = MLW_MO_ACQ_REL,
-        SeqCst = MLW_MO_SEQ_CST,
+        Relaxed = MLW_MO_RELAXED, ///< Atomicity only; no ordering guarantee.
+        Acquire = MLW_MO_ACQUIRE, ///< No later memory access moves before this load.
+        Release = MLW_MO_RELEASE, ///< No earlier memory access moves after this store.
+        AcqRel = MLW_MO_ACQ_REL,  ///< Acquire + release; for read-modify-write ops.
+        SeqCst = MLW_MO_SEQ_CST,  ///< Full sequential consistency (single total order).
     };
 
-    // make shure teh oreder is corect for cas operation to work corectly
+    // make shure the oreder is corect for cas operation to work corectly
     static_assert((int)MemoryOrder::Relaxed < (int)MemoryOrder::Acquire);
     static_assert((int)MemoryOrder::Acquire < (int)MemoryOrder::Release);
     static_assert((int)MemoryOrder::Release < (int)MemoryOrder::AcqRel);
     static_assert((int)MemoryOrder::AcqRel < (int)MemoryOrder::SeqCst);
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically add `value`, returning the original value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
-        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize)) 
+        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwFetchAdd(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
@@ -308,6 +344,13 @@ namespace core::sync
 #endif
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically add `value`, returning the new value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwAddFetch(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
@@ -315,29 +358,51 @@ namespace core::sync
         return mlwFetchAdd(ptr, value, order) + value;
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically subtract `value`, returning the original value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
-        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize)) 
+        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwFetchSub(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
         // negating and calling add gives the correct fetch_sub result
         // works for both signed and unsigned since two's complement wraps correctly
-        return mlwFetchAdd(ptr, static_cast<T>(0 - value), order);
+        using U = make_unsigned_t<T>; // add this trait if you don't have it
+        return mlwFetchAdd(ptr, static_cast<T>(static_cast<U>(0) - static_cast<U>(value)), order);
 #else
         return static_cast<T>(__atomic_fetch_sub(ptr, value, static_cast<int>(order)));
 #endif
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically subtract `value`, returning the new value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
-        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize)) 
+        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwSubFetch(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
     {
         return mlwFetchSub(ptr, value, order) - value;
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically replace `*ptr` with `value`, returning the previous value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
         requires(sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
-    MLW_FORCE_INLINE T mlwExchange(T *ptr, T value, [[maybe_unused]]  MemoryOrder order = MemoryOrder::SeqCst)
+    MLW_FORCE_INLINE T mlwExchange(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
         if constexpr (sizeof(T) == 1)
@@ -421,6 +486,13 @@ namespace core::sync
 #endif
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically AND `value` with `*ptr`, returning the original value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwFetchAnd(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
@@ -503,15 +575,29 @@ namespace core::sync
 #endif
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically AND `value` with `*ptr`, returning the new value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
-        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize)) 
+        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwAndFetch(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
     {
         return mlwFetchAnd(ptr, value, order) & value;
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically OR `value` into `*ptr`, returning the original value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
-        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize)) 
+        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwFetchOr(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
     {
 #if defined(MLW_MSVC)
@@ -592,6 +678,13 @@ namespace core::sync
 #endif
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically OR `value` into `*ptr`, returning the new value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwOrFetch(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
@@ -599,6 +692,13 @@ namespace core::sync
         return mlwFetchOr(ptr, value, order) | value;
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically XOR `value` with `*ptr`, returning the original value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
         requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwFetchXor(T *ptr, T value, [[maybe_unused]] MemoryOrder order = MemoryOrder::SeqCst)
@@ -681,13 +781,30 @@ namespace core::sync
 #endif
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Atomically XOR `value` with `*ptr`, returning the new value.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
-        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize)) 
+        requires core::is_integer_v<T> && (sizeof(T) == 8 || sizeof(T) == 4 || sizeof(T) == 2 || sizeof(T) == 1) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE T mlwXorFetch(T *ptr, T value, MemoryOrder order = MemoryOrder::SeqCst)
     {
         return mlwFetchXor(ptr, value, order) ^ value;
     }
 
+    /// \addtogroup atomic_lowlevel
+    /// \brief Strong compare-and-swap: if `*ptr == expected`, store `desired`.
+    ///
+    /// Returns `true` on success; otherwise updates `expected` with the actual
+    /// value read from `*ptr`.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
         requires(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE bool mlwCasStrong(T *ptr, T &expected, T desired, [[maybe_unused]] MemoryOrder success, MemoryOrder fail)
@@ -825,8 +942,17 @@ namespace core::sync
 #endif
     }
 
-    // weak — on MSVC same as strong since interlocked functions retry internally
-    // on GCC/Clang ARM this maps to native LDAXR/STLXR without retry wrapper
+    /// \addtogroup atomic_lowlevel
+    /// \brief Weak compare-and-swap. May fail spuriously.
+    ///
+    /// On MSVC this behaves like strong CAS because the platform intrinsics
+    /// already retry internally. On other platforms it can be used when a
+    /// spurious failure is acceptable. \see mlwCasStrong.
+    ///
+    /// \note Low-level primitive. Prefer \ref core::Atomic<T>, which selects the
+    ///       correct memory order and handles the MSVC full-barrier case for you.
+    ///       Use these raw ops only when you need a specific ordering or size
+    ///       variant that \ref core::Atomic<T> does not cover.
     template <typename T>
         requires(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8) && (sizeof(T) <= sizeof(usize))
     MLW_FORCE_INLINE bool mlwCasWeak(T *ptr, T &expected, T desired, MemoryOrder success, MemoryOrder fail)

@@ -2,36 +2,63 @@
 #include "../c_string.h"
 #include "../libc/math.h"
 
+/// \file
+/// \brief The formatting core: concepts, sinks, and the `{}` format engine.
+///
+/// Public surface is the \ref FormatBuffer / \ref Formattable / \ref
+/// FormattableValue concepts, \ref core::Sink, and \ref core::FormatBufferType.
+/// The actual rendering (integers, floats, hex, the placeholder parser) lives in
+/// `core::detail` and is excluded from these docs; see it with a maintainer
+/// build (`INTERNAL_DOCS = YES`).
 
 /// \defgroup formattable Formattable Types
-/// Types printable through the format API. Each implements a format()
-/// customization point that the format core calls; you don't call it directly.
-
+/// \brief Types printable through the format API.
+///
+/// Each member implements a `format()` customization point that the format core
+/// calls; you don't call it directly. A type joins this group by satisfying
+/// \ref core::Formattable and tagging itself with `\ingroup formattable`.
 
 namespace core
 {
 
+    /// \brief Requirements for a type usable as a formatting output buffer.
+    ///
+    /// A `FormatBuffer` can append a \ref CStr and append a single `char`.
+    /// \ref FormatBufferType and \ref Sink both satisfy this.
     template <typename T>
     concept FormatBuffer = requires(T &buffer, const CStr &str, char c) {
         { buffer.append(str) } -> same_as<void>;
         { buffer.append(c) } -> same_as<void>;
     };
 
+    /// \brief A type `T` that can format itself into a `Buffer`.
+    ///
+    /// Satisfied when `T` has a `format(Buffer&) const` member. This is the
+    /// customization point user types implement to become printable.
     template <typename T, typename Buffer>
     concept Formattable = FormatBuffer<Buffer> && requires(const T &value, Buffer &buffer) {
         { value.format(buffer) } -> same_as<void>;
     };
 
+    /// \brief Type-erased \ref FormatBuffer.
+    ///
+    /// Wraps any concrete buffer behind function pointers so non-template code
+    /// (and types whose `format()` only accepts a `Sink`) can write output
+    /// without being templated on the buffer type. Build one with \ref makeSink.
     struct Sink
     {
-        void *ctx;
-        void (*append_str)(void *, const CStr &);
-        void (*append_chr)(void *, char);
+        void *ctx;                                ///< Opaque pointer to the wrapped buffer.
+        void (*append_str)(void *, const CStr &); ///< Thunk: append a string to \c ctx.
+        void (*append_chr)(void *, char);         ///< Thunk: append a char to \c ctx.
 
+        /// \brief Append a string.
         inline void append(const CStr &str) { append_str(ctx, str); }
+        /// \brief Append a single character.
         inline void append(char c) { append_chr(ctx, c); }
     };
 
+    /// \brief Wrap a concrete \ref FormatBuffer into a type-erased \ref Sink.
+    /// \param b  The buffer to wrap; must outlive the returned Sink.
     template <FormatBuffer Buffer>
     MLW_FORCE_INLINE Sink makeSink(Buffer &b)
     {
@@ -44,7 +71,16 @@ namespace core
         };
     }
 
-    // remove the buffer and just use formateble???
+    /// \brief Everything the format core knows how to render.
+    ///
+    /// True for the built-in cases handled directly by \ref detail::formatValue
+    /// (arrays, \ref CStr, `const char*`, `char`, `bool`, integers, floats,
+    /// raw pointers) or for any user type satisfying \ref Formattable into
+    /// `Buffer` or into a \ref Sink.
+    ///
+    /// \note The `Buffer` parameter is required: it lets a user type format
+    ///       directly into the concrete buffer (\ref Formattable "Formattable<T, Buffer>")
+    ///       and only fall back to the type-erased \ref Sink path when it can't.
     template <typename T, typename Buffer>
     concept FormattableValue =
         is_array_v<remove_const_t<T>> ||
@@ -58,26 +94,43 @@ namespace core
         Formattable<T, Buffer> ||
         Formattable<T, Sink>;
 
-    struct FormatBufferType
-    {
-    private:
-        void realocate();
-
-    public:
-        char *ptr;
-        index_t len;
-        index_t capacity;
-
-        void append(const CStr &str);
-
-        void append(const uint8 value);
-    };
-
     namespace detail
     {
-        //void mlw__crt_distorty_format_buffer();
+        /// \brief A growable character buffer that satisfies \ref FormatBuffer.
+        ///
+        /// The concrete output target used by the format API. Owns a heap buffer
+        /// that grows on demand.
+        ///
+        /// This type is intended for a process-wide scratch buffer managed by the
+        /// runtime/CRT. The backing storage is lazily allocated when first used
+        /// and may be freed during program shutdown.
+        struct FormatBufferType
+        {
+        private:
+            /// \brief Grow the backing storage when capacity is exhausted.
+            void realocate();
+
+        public:
+            char *ptr;        ///< Backing storage (owned).
+            index_t len;      ///< Number of characters currently written.
+            index_t capacity; ///< Allocated capacity in characters.
+
+            /// \brief Append a string, growing if needed.
+            void append(const CStr &str);
+
+            /// \brief Append a single byte, growing if needed.
+            void append(const uint8 value);
+        };
+
+        /// \brief Access the process-wide scratch \ref FormatBufferType.
+        ///
+        /// The scratch buffer is owned by the runtime and lazily initialized on
+        /// first use. Its lifetime is tied to process shutdown so callers do not
+        /// need to explicitly destroy it.
         FormatBufferType &getFormatBuffer();
 
+        /// \brief Append the decimal digits of an unsigned value.
+        /// Builds digits reversed into a small stack buffer, then flips them.
         template <FormatBuffer Buffer>
         inline void formatUInt(Buffer &buffer, uint64 value)
         {
@@ -106,6 +159,8 @@ namespace core
             buffer.append(CStr(tmp, len));
         }
 
+        /// \brief Append the decimal digits of a signed value, with sign.
+        /// Emits `-` then delegates the magnitude to \ref formatUInt.
         template <FormatBuffer Buffer>
         inline void formatInt(Buffer &buffer, int64 value)
         {
@@ -121,6 +176,11 @@ namespace core
             formatUInt(buffer, negative ? static_cast<uint64>(-value) : static_cast<uint64>(value));
         }
 
+        /// \brief Append a floating-point value in decimal or scientific form.
+        /// \param precision       Fractional digits, clamped to [1, 16].
+        /// \param fixedPrecision  If true, keep trailing zeros; otherwise trim.
+        /// Very large (>1e14) or very small (<1e-4) magnitudes switch to
+        /// `<mantissa>e<exponent>` notation. NaN and infinities are spelled out.
         template <FormatBuffer Buffer>
         inline void formatFloat(Buffer &buffer, f64 value, index_t precision = 6, bool fixedPrecision = false)
         {
@@ -213,6 +273,11 @@ namespace core
             buffer.append(CStr(tmp, len));
         }
 
+        /// \brief Append a value as fixed-width, zero-padded hexadecimal.
+        /// Width is the pointer width of the target (16 or 8 nibbles) and the
+        /// output is prefixed with `0x`.
+        /// \note A value of 0 is rendered as `nullptr`, since this is the
+        ///       pointer-formatting path.
         template <FormatBuffer Buffer>
         inline void formatHex(Buffer &buffer, usize value)
         {
@@ -245,6 +310,12 @@ namespace core
             buffer.append(CStr(tmp, num_nibbles));
         }
 
+        /// \brief Render a single value of any \ref FormattableValue type.
+        ///
+        /// Compile-time dispatch over the supported categories: char arrays
+        /// become strings, other arrays render as `{a, b, ...}`, built-ins go
+        /// to the numeric/bool/hex helpers, and user types call their own
+        /// `format()` (into the buffer directly, or wrapped in a \ref Sink).
         template <FormatBuffer Buffer, typename T>
             requires FormattableValue<T, Buffer>
         void formatValue(Buffer &buffer, const T &value)
@@ -317,11 +388,25 @@ namespace core
                 static_assert(!is_same_v<U, U>, "type does not implement format");
             }
         }
+
+        /// \brief Terminal overload: append the remaining literal text.
         template <FormatBuffer Buffer>
         inline void format(Buffer &buffer, const CStr str)
         {
             buffer.append(str);
         }
+
+        /// \brief Substitute the next `{}` in `str` with `value`, then recurse.
+        ///
+        /// Appends the text before the first `{}`, formats one argument in its
+        /// place, and continues with the rest of the string and arguments.
+        ///
+        /// \warning Consumes exactly one `{}` per argument. If the format string
+        ///          runs out of `{}` while arguments remain, this returns
+        ///          without appending the trailing literal or the leftover
+        ///          arguments. Correct argument count is entirely the caller's
+        ///          responsibility; the call site must verify arity first
+        ///          (see \ref checkFormattable).
         template <FormatBuffer Buffer, typename T, typename... Args>
         void format(Buffer &buffer, const CStr str, const T &value, const Args &...args)
         {
@@ -339,12 +424,15 @@ namespace core
             }
         }
 
+        /// \brief Compile-time check that every argument type is formattable.
         template <typename... Args>
         consteval bool checkFormattable()
         {
             return (FormattableValue<remove_cv_t<remove_ref_t<Args>>, FormatBufferType> && ...);
         }
 
+        /// \brief Compile-time argument count, used by the format macro for sizing/optimization.
+        /// \note Not a correctness check; it does not validate count against placeholders.
         template <typename... Args>
         consteval index_t ArgsCount()
         {
