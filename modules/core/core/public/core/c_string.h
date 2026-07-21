@@ -3,11 +3,12 @@
 /// \file
 /// \brief Defines core::CStr, a non-owning C-string view (pointer + length).
 
-#include "libc/str.h"
 #include "compilers.h"
 
 namespace core
 {
+    usize mlwStrlen(const char *str);
+    
     /// \ingroup formattable
     /// \brief Non-owning view of a C-style string.
     ///

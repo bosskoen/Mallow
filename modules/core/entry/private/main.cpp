@@ -54,7 +54,7 @@ extern "C" void mlwStart(){
     new (&core::mlw_g_alloc) core::GAlloc{};
 
 
-    core::ThreadCache::mlw__first_crt_ctor();
+    core::detail::ThreadCache::mlw__first_crt_ctor();
     crt::run_global_ctors();
     crt::run_thread_local_ctors();
 

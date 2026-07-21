@@ -53,7 +53,7 @@ void run_cpp_ctors() {
 void WINAPI __dyn_tls_init(PVOID, DWORD reason, LPVOID) {
     if (reason != DLL_THREAD_ATTACH || __tls_guard == true) return;
 
-    core::ThreadCache::mlw__first_crt_ctor();
+    core::detail::ThreadCache::mlw__first_crt_ctor();
 
     __tls_guard = true;
 
@@ -106,13 +106,13 @@ static void WINAPI mlw_tls_callback(PVOID h, DWORD reason, LPVOID r) {
         __dyn_tls_init(h, DLL_THREAD_ATTACH, r);
     else if (reason == DLL_THREAD_DETACH) {
         crt::run_thread_local_dtors();
-        core::ThreadCache::mlw__crt_distroy_tc_storage();
+        core::detail::ThreadCache::mlw__crt_distroy_tc_storage();
         core::detail::mlw__crt_distroy_format_buffer();
     }
     else if (reason == DLL_PROCESS_DETACH) {
         crt::run_thread_local_dtors();
         crt::run_global_dtors();
-        core::ThreadCache::mlw__crt_distroy_tc_storage();
+        core::detail::ThreadCache::mlw__crt_distroy_tc_storage();
         //run memory check maby
         core::detail::mlw__crt_distroy_format_buffer();
     }

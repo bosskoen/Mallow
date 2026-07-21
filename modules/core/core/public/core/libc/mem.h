@@ -2,55 +2,77 @@
 
 #include "../memory/galloc.h"
 
+/// \file
+/// \brief Freestanding libc runtime (mem*/strlen) and global-allocator wrappers.
 
 namespace core
 {
-    //no initiolisasion
+    /// \brief OS memory geometry, filled in once at CRT init.
+    ///
+    /// Populated by the CRT before any allocator use; reading it before that
+    /// point yields zeroes.
+    /// \note Not initialized as a constant — it is written at startup from the OS.
     extern struct PlatformInfo {
-        usize page_size;
-        usize page_mask;
-        usize page_shift;
-        usize alloc_granularity;
-        usize gran_mask;
-        usize gran_shift;
+        usize page_size;          ///< Page size in bytes.
+        usize page_mask;          ///< page_size - 1 (for round-to-page via AND).
+        usize page_shift;         ///< log2(page_size).
+        usize alloc_granularity;  ///< OS allocation granularity (Windows VirtualAlloc unit).
+        usize gran_mask;          ///< alloc_granularity - 1.
+        usize gran_shift;         ///< log2(alloc_granularity).
     } PLATFORM_INFO;
 
+    /// \defgroup freestanding_libc Freestanding libc runtime
+    /// \brief C-named functions the compiler emits implicitly, provided as real
+    ///        out-of-line symbols with `mlw*` aliases.
+    ///
+    /// Even under `-ffreestanding` the compiler lowers certain idioms to calls by
+    /// their C names (struct copy -> `memcpy`, array zero-init -> `memset`,
+    /// scanning loops -> `strlen`), so these MUST exist as real symbols. Each has
+    /// an `mlw`-prefixed alias at the same address for explicit use.
+    ///
+    /// \warning The translation units defining these must be compiled with
+    ///          compiler idiom-recognition OFF (`-fno-builtin` etc.), or the
+    ///          loops get rewritten into calls to themselves — infinite
+    ///          recursion. See the build flags in the implementation files.
+    /// @{
 
+    /// \brief Copy `n` bytes from `s` to `d` (regions must not overlap).
     void* mlwMemcpy(void* d, const void* s, usize n);
+    /// \brief Fill `n` bytes at `d` with byte `v`.
     void* mlwMemset(void* d, int v, usize n);
+    /// \brief Copy `n` bytes from `s` to `d`, handling overlap.
     void* mlwMemmove(void* d, const void* s, usize n);
+    /// \brief Compare `n` bytes; <0, 0, or >0 like C `memcmp`.
     int   mlwMemcmp(const void* a, const void* b, usize n);
 
-    MLW_FORCE_INLINE void *mlwAlignedAlloc(usize size, usize alignment)
-    {
-        return mlw_g_alloc.alignAlloc(size, alignment);
-    }
+    /// \brief Length of a NUL-terminated string, excluding the terminator.
+    /// \note Declared here (grouped with the mem* runtime), but c_string.h
+    ///       *forward-declares* it rather than including this header — that is
+    ///       what breaks the macro/format/c_string -> mem include cycle. Do not
+    ///       replace that forward declaration with an include.
+    usize mlwStrlen(const char *str);
 
-    MLW_FORCE_INLINE void *mlwMalloc(usize size)
-    {
-        return mlw_g_alloc.alloc(size);
-    }
-    MLW_FORCE_INLINE void mlwFree(void *ptr)
-    {
-        mlw_g_alloc.free(ptr);
-    }
-    MLW_FORCE_INLINE void *mlwRealloc(void *ptr, usize newSize)
-    {
-        return mlw_g_alloc.realloc(ptr, newSize);
-    }
+    /// @}
+
+    /// \name Global allocator wrappers
+    /// Thin forwards to the process-wide \ref core::GAlloc instance
+    /// \ref core::mlw_g_alloc; they carry its contract exactly.
+    /// @{
+
+    /// \brief Allocate `size` bytes aligned to `alignment` from the global allocator.
+    void *mlwAlignedAlloc(usize size, usize alignment);
+
+    /// \brief Allocate `size` bytes with default alignment from the global allocator.
+    void *mlwMalloc(usize size);
+
+    /// \brief Free a global-allocator pointer. nullptr is a no-op.
+    /// \note Frees a pointer from either \ref mlwMalloc or \ref mlwAlignedAlloc —
+    ///       the allocator recovers the size and alignment from the block, so the
+    ///       aligned and non-aligned paths share one free.
+    void mlwFree(void *ptr);
+    
+    /// \brief Grow a global-allocator allocation. See \ref core::GAlloc::realloc.
+    void *mlwRealloc(void *ptr, usize newSize);
+
+    /// @}
 }
-
-// Sources:
-//   Intel x86/x86_64 page size : Intel SDM vol.3a ch.5 table 5.1
-//                                 https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-//   Windows ARM64 page size    : implied by Windows ARM64 ABI conventions, not explicitly stated
-//                                 https://learn.microsoft.com/en-us/cpp/build/arm64-windows-abi-conventions
-//   Windows granularity        : no official documentation, assumed 65536
-//   Apple ARM page size        : no official documentation, use runtime lookup
-//   AMD x86/x86_64 page size   : no official documentation found
-//   Linux ARM page size        : runtime only, kernel configurable
-//                                 https://github.com/torvalds/linux/blob/master/arch/arm64/Kconfig
-//
-// Runtime lookup:
-//   Windows : SYSTEM_INFO i; GetSystemInfo(&i); i.dwPageSize; i.dwAllocationGranularity;
-//   Unix    : sysconf(_SC_PAGESIZE);

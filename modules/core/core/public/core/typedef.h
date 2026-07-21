@@ -1,4 +1,11 @@
 #pragma once
+/// 
+/// \file 
+/// \brief Common fundamental type aliases used across the core library.
+/// 
+/// This header provides portable aliases for integer, floating-point,
+/// pointer-sized, and indexing types used throughout the project.
+/// 
 
 // i8 / u8
 using int8 = signed char;

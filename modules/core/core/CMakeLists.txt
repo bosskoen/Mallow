@@ -27,7 +27,6 @@ target_sources(core
         public/core/io/format.h
         public/core/libc/mem.h
         public/core/libc/process.h
-        public/core/libc/str.h
         public/core/libc/math.h
         private/memory.cpp
         public/core/thread/atomic_op.h

@@ -9,26 +9,27 @@
 #endif
 
 
-namespace core {
+namespace core::detail {
 	alignas(ThreadCache) static thread_local uint8 tc_storage[sizeof(ThreadCache)]{0};
 	static thread_local bool tc_constructed  = false; 
 
 	static ThreadCache& getThreadCache() { return *reinterpret_cast<ThreadCache*>(tc_storage); }
 
+}
 
+namespace core
+{
 	alignas(GAlloc) static uint8 g_alloc_storage[sizeof(GAlloc)];
 	GAlloc& mlw_g_alloc = *reinterpret_cast<GAlloc*>(g_alloc_storage);
+} // namespace core
 
-
-
-}
-void core::ThreadCache::mlw__crt_distroy_tc_storage(){
-	if (core::tc_constructed) {
-	core::getThreadCache().~ThreadCache();
-	core::tc_constructed = false;
+void core::detail::ThreadCache::mlw__crt_distroy_tc_storage(){
+	if (tc_constructed) {
+	getThreadCache().~ThreadCache();
+	tc_constructed = false;
 	}
 }
-void core::ThreadCache::mlw__first_crt_ctor()
+void core::detail::ThreadCache::mlw__first_crt_ctor()
 {
 	if (!tc_constructed){
 		new (tc_storage) ThreadCache{};
@@ -39,7 +40,7 @@ void core::ThreadCache::mlw__first_crt_ctor()
 // Check whether `block` has enough room for `size` bytes at the requested
 // alignment. Returns the aligned payload pointer, or nullptr if it won't fit.
 // The caller uses this to walk the free list looking for a suitable block.
-static char *fit_aligned(core::Header *block, usize size, usize align)
+static char *fit_aligned(core::detail::Header *block, usize size, usize align)
 {
 	char *payload = reinterpret_cast<char *>(block + 1);
 	char *aligned = reinterpret_cast<char *>(
@@ -49,7 +50,7 @@ static char *fit_aligned(core::Header *block, usize size, usize align)
 		aligned += align; // should never happen, but guards against overflow
 
 	usize total_needed = (aligned - reinterpret_cast<char *>(block)) + size;
-	if (total_needed > block->next_off - sizeof(core::Header))
+	if (total_needed > block->next_off - sizeof(core::detail::Header))
 		return nullptr;
 	return aligned;
 }
@@ -61,7 +62,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 	if (align < 8)
 		align = 8;
 	// round size up to Header alignment so block boundaries stay aligned
-	size = (size + alignof(Header) - 1) & ~(alignof(Header) - 1);
+	size = (size + alignof(detail::Header) - 1) & ~(alignof(detail::Header) - 1);
 
 	if (align == PLATFORM_INFO.page_size)
 	{
@@ -70,7 +71,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 	if (align > 256)
 		return nullptr;
 
-	core::ThreadCache &cache = getThreadCache();
+	core::detail::ThreadCache &cache = detail::getThreadCache();
 	// amortize remote-free processing: drain before every alloc
 	drainRemoteList(cache);
 	if (size < align)
@@ -83,30 +84,30 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 	// is a singly-linked embedded pointer chain. No headers needed.
 	if (size <= MIN_SIZE)
 	{
-		RegionTable::Entry::Type block_type;
+		detail::RegionTable::Entry::Type block_type;
 		if (size <= 8)
 		{
-			block_type = RegionTable::Entry::Type::S8;
+			block_type = detail::RegionTable::Entry::Type::S8;
 		}
 		else if (size <= 16)
 		{
-			block_type = RegionTable::Entry::Type::S16;
+			block_type = detail::RegionTable::Entry::Type::S16;
 		}
 		else if (size <= 32)
 		{
-			block_type = RegionTable::Entry::Type::S32;
+			block_type = detail::RegionTable::Entry::Type::S32;
 		}
 		else if (size <= 64)
 		{
-			block_type = RegionTable::Entry::Type::S64;
+			block_type = detail::RegionTable::Entry::Type::S64;
 		}
 		else
 		{
-			block_type = RegionTable::Entry::Type::S128;
+			block_type = detail::RegionTable::Entry::Type::S128;
 		}
 
-		Region *current;
-		ThreadCache::SizeClass &sc = cache.getSizeClass(block_type);
+		detail::Region *current;
+		detail::ThreadCache::SizeClass &sc = cache.getSizeClass(block_type);
 		current = sc.active;
 		if (current == nullptr)
 		{
@@ -125,7 +126,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 
 		// pop the first free cell
 		void *block = reinterpret_cast<void *>(current->free_block);
-		current->free_block = *reinterpret_cast<Header **>(block);
+		current->free_block = *reinterpret_cast<detail::Header **>(block);
 
 		if (current->used_count == 0) --sc.free_slabs;
 		++current->used_count;
@@ -143,7 +144,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 	{
 		// --- find a region with a free block ---
 
-		Region *current = cache.medium.active;
+		detail::Region *current = cache.medium.active;
 		if (current == nullptr)
 		{
 			if (!allocMediumRegion(current, cache))
@@ -162,7 +163,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 		}
 
 		// --- find a block that fits the requested alignment ---
-		Header *block = current->free_block;
+		detail::Header *block = current->free_block;
 		char *aligned_payload = nullptr;
 		while ((aligned_payload = fit_aligned(block, size, align)) == nullptr)
 		{
@@ -196,24 +197,24 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 		// Fragments smaller than MIN_SIZE + sizeof(Header) can't hold a free block,
 		// so they get absorbed into the allocated block.
 
-		Header *new_header = reinterpret_cast<Header *>(aligned_payload) - 1;
-		Header *middle_h = reinterpret_cast<Header *>(aligned_payload + size);
-		Header *next_h = reinterpret_cast<Header *>(reinterpret_cast<char *>(block) + block->next_off);
-		Header *prev_h = block->pre_off != 0
-							 ? reinterpret_cast<Header *>(reinterpret_cast<char *>(block) - block->pre_off)
+		detail::Header *new_header = reinterpret_cast<detail::Header *>(aligned_payload) - 1;
+		detail::Header *middle_h = reinterpret_cast<detail::Header *>(aligned_payload + size);
+		detail::Header *next_h = reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(block) + block->next_off);
+		detail::Header *prev_h = block->pre_off != 0
+							 ? reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(block) - block->pre_off)
 							 : nullptr;
 
-		Header *prev_f = block->getFreePtr()->prev_free_block;
-		Header *next_f = block->getFreePtr()->next_free_block;
+		detail::Header *prev_f = block->getFreePtr()->prev_free_block;
+		detail::Header *next_f = block->getFreePtr()->next_free_block;
 
 		usize padding = (new_header > block)
 			? static_cast<usize>(reinterpret_cast<char*>(new_header) - reinterpret_cast<char*>(block + 1))
 			: 0;
 		usize after_padding = reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(middle_h);
 
-		bool keep_front = padding > MIN_SIZE + sizeof(Header);
-		bool keep_back = after_padding > MIN_SIZE + sizeof(Header);
-		bool last_block = static_cast<usize>(reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(current)) >= Region::MEDIUM_BLOCK_SIZE;
+		bool keep_front = padding > MIN_SIZE + sizeof(detail::Header);
+		bool keep_back = after_padding > MIN_SIZE + sizeof(detail::Header);
+		bool last_block = static_cast<usize>(reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(current)) >= detail::Region::MEDIUM_BLOCK_SIZE;
 
 		// The four cases handle every combination of keeping/absorbing the
 		// front and back fragments. In each case:
@@ -243,7 +244,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 				next_h->pre_off = mid_to_next;
 			middle_h->align = 0;
 
-			mlwMemset(block, 0, sizeof(Header));
+			mlwMemset(block, 0, sizeof(detail::Header));
 			new_header->pre_off = prev_h ? reinterpret_cast<char *>(new_header) - reinterpret_cast<char *>(prev_h) : 0;
 			if (prev_h)
 				prev_h->next_off = new_header->pre_off;
@@ -263,7 +264,7 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 				next_f->getFreePtr()->prev_free_block = prev_f;
 
 			usize new_next_off = reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(new_header);
-			mlwMemset(block, 0, sizeof(Header));
+			mlwMemset(block, 0, sizeof(detail::Header));
 			new_header->pre_off = prev_h ? reinterpret_cast<char *>(new_header) - reinterpret_cast<char *>(prev_h) : 0;
 			if (prev_h)
 				prev_h->next_off = new_header->pre_off;
@@ -320,16 +321,16 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 // Try to adopt an orphaned medium region before falling back to mmap.
 // If last_region is null, the new region becomes the active head;
 // otherwise it's appended after last_region.
-bool core::GAlloc::allocMediumRegion(core::Region *last_region, core::ThreadCache &cache)
+bool core::GAlloc::allocMediumRegion(core::detail::Region *last_region, core::detail::ThreadCache &cache)
 {
 	// check orphan pool first — reusing an existing region avoids a syscall
 	{
 		sync::Lock lock{mlw_g_alloc.orphan_lock};
 		drainRemoteList(orphan_pool);
-		ThreadCache::SizeClass &sc = orphan_pool.getSizeClass(RegionTable::Entry::Type::Medium);
+		detail::ThreadCache::SizeClass &sc = orphan_pool.getSizeClass(detail::RegionTable::Entry::Type::Medium);
 		if (sc.active != nullptr)
 		{
-			Region *r = sc.active;
+			detail::Region *r = sc.active;
 			sc.active = r->next;
 			if (r->next)
 				r->next->previous = nullptr;
@@ -342,7 +343,7 @@ bool core::GAlloc::allocMediumRegion(core::Region *last_region, core::ThreadCach
 			l.unlock();
 			if (!last_region)
 			{
-				cache.getSizeClass(RegionTable::Entry::Type::Medium).active = r;
+				cache.getSizeClass(detail::RegionTable::Entry::Type::Medium).active = r;
 			}
 			else
 			{
@@ -351,23 +352,23 @@ bool core::GAlloc::allocMediumRegion(core::Region *last_region, core::ThreadCach
 			}
 			if (r->used_count == 0) {
 				--sc.free_slabs;
-				++cache.getSizeClass(RegionTable::Entry::Type::Medium).free_slabs;
+				++cache.getSizeClass(detail::RegionTable::Entry::Type::Medium).free_slabs;
 			}
 			return true;
 		}
 	}
 
 	// no orphans available — allocate a fresh region from the OS
-	Region *new_reg;
+	detail::Region *new_reg;
 #if defined(MLW_WINDOWS)
-	new_reg = static_cast<Region *>(::VirtualAlloc(nullptr, Region::MEDIUM_BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+	new_reg = static_cast<detail::Region *>(::VirtualAlloc(nullptr, detail::Region::MEDIUM_BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
 	if (!new_reg)
 	{
 		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
 		return false;
 	}
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	new_reg = static_cast<Region *>(::mmap(nullptr, Region::MEDIUM_BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	new_reg = static_cast<detail::Region *>(::mmap(nullptr, detail::Region::MEDIUM_BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
 	if (new_reg == MAP_FAILED)
 	{
 		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
@@ -383,10 +384,10 @@ bool core::GAlloc::allocMediumRegion(core::Region *last_region, core::ThreadCach
 	new_reg->owning_cache = &cache;
 
 	// the entire region (minus the Region header and one Header) is a single free block
-	new_reg->free_block = reinterpret_cast<Header *>(new_reg + 1);
+	new_reg->free_block = reinterpret_cast<detail::Header *>(new_reg + 1);
 	new_reg->free_block->align = 0;
 	new_reg->free_block->pre_off = 0;
-	new_reg->free_block->next_off = Region::MEDIUM_BLOCK_SIZE - sizeof(Region);
+	new_reg->free_block->next_off = detail::Region::MEDIUM_BLOCK_SIZE - sizeof(detail::Region);
 	new_reg->free_block->getFreePtr()->next_free_block = nullptr;
 	new_reg->free_block->getFreePtr()->prev_free_block = nullptr;
 
@@ -402,14 +403,14 @@ bool core::GAlloc::allocMediumRegion(core::Region *last_region, core::ThreadCach
 	}
 
 	sync::WriteLock lock{region_list_lock};
-	region_table.insert(RegionTable::Entry{new_reg, RegionTable::Entry::Type::Medium});
+	region_table.insert(detail::RegionTable::Entry{new_reg, detail::RegionTable::Entry::Type::Medium});
 
 	return true;
 }
 
 // Unlink a medium region from its owning cache and return it to the OS.
 // Opportunistically drains orphan remote frees if the lock is available.
-void core::GAlloc::freeMediumRegion(core::Region *region)
+void core::GAlloc::freeMediumRegion(core::detail::Region *region)
 {
 	// tryLock: don't block the free path just to drain orphans
 	Optional<sync::Lock<sync::spin_lock::MCS>> l = nullptr;
@@ -421,9 +422,9 @@ void core::GAlloc::freeMediumRegion(core::Region *region)
 		l->unlock();
 	}
 
-	Region *next = region->next;
-	Region *prev = region->previous;
-	ThreadCache *cache = region->owning_cache;
+	detail::Region *next = region->next;
+	detail::Region *prev = region->previous;
+	detail::ThreadCache *cache = region->owning_cache;
 	if (next)
 	{
 		next->previous = prev;
@@ -455,18 +456,18 @@ void core::GAlloc::freeMediumRegion(core::Region *region)
 //   2. Forward:  merge with successor if free
 // Free list updates depend on the combination — see the architecture
 // overview in galloc.h for the full decision table.
-bool core::GAlloc::freeMedium(void *ptr, core::Region *region)
+bool core::GAlloc::freeMedium(void *ptr, core::detail::Region *region)
 {
-	Header *header = static_cast<Header *>(ptr) - 1;
+	detail::Header *header = static_cast<detail::Header *>(ptr) - 1;
 	mlw_debug_assert_msg(header->align != 0, "freed a free block");
 
-	Header *next_header = reinterpret_cast<Header *>(
+	detail::Header *next_header = reinterpret_cast<detail::Header *>(
 		reinterpret_cast<char *>(header) + header->next_off);
 	bool last_block = static_cast<usize>(
-						  reinterpret_cast<char *>(next_header) - reinterpret_cast<char *>(region)) >= Region::MEDIUM_BLOCK_SIZE;
+						  reinterpret_cast<char *>(next_header) - reinterpret_cast<char *>(region)) >= detail::Region::MEDIUM_BLOCK_SIZE;
 
-	Header *prev_header = header->pre_off != 0
-							  ? reinterpret_cast<Header *>(reinterpret_cast<char *>(header) - header->pre_off)
+	detail::Header *prev_header = header->pre_off != 0
+							  ? reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(header) - header->pre_off)
 							  : nullptr;
 
 	bool merged_backward = false;
@@ -482,12 +483,12 @@ bool core::GAlloc::freeMedium(void *ptr, core::Region *region)
 			next_header->pre_off = prev_header->next_off;
 		header = prev_header;
 	}
-	else if (header->pre_off == 0 && reinterpret_cast<Header *>(region + 1) != header)
+	else if (header->pre_off == 0 && reinterpret_cast<detail::Header *>(region + 1) != header)
 	{
 		// pre_off == 0 means nothing precedes us in the block chain, but we're
 		// not at region+1 — the gap is dead alignment padding from a prior alloc.
 		// Reclaim it by moving the header back to region start.
-		Header *reclaimed = reinterpret_cast<Header *>(region + 1);
+		detail::Header *reclaimed = reinterpret_cast<detail::Header *>(region + 1);
 		reclaimed->pre_off = 0;
 		reclaimed->next_off =
 			reinterpret_cast<char *>(next_header) - reinterpret_cast<char *>(reclaimed);
@@ -500,10 +501,10 @@ bool core::GAlloc::freeMedium(void *ptr, core::Region *region)
 	if (!last_block && next_header->align == 0)
 	{
 		// successor is free — absorb it into our block
-		Header *next_next = reinterpret_cast<Header *>(
+		detail::Header *next_next = reinterpret_cast<detail::Header *>(
 			reinterpret_cast<char *>(next_header) + next_header->next_off);
 		bool next_last = static_cast<usize>(
-							 reinterpret_cast<char *>(next_next) - reinterpret_cast<char *>(region)) >= Region::MEDIUM_BLOCK_SIZE;
+							 reinterpret_cast<char *>(next_next) - reinterpret_cast<char *>(region)) >= detail::Region::MEDIUM_BLOCK_SIZE;
 
 		header->next_off =
 			reinterpret_cast<char *>(next_next) - reinterpret_cast<char *>(header);
@@ -511,8 +512,8 @@ bool core::GAlloc::freeMedium(void *ptr, core::Region *region)
 			next_next->pre_off = header->next_off;
 
 		// next_header is currently in the free list and needs to be dealt with
-		Header *next_f = next_header->getFreePtr()->next_free_block;
-		Header *prev_f = next_header->getFreePtr()->prev_free_block;
+		detail::Header *next_f = next_header->getFreePtr()->next_free_block;
+		detail::Header *prev_f = next_header->getFreePtr()->prev_free_block;
 
 		if (merged_backward)
 		{
@@ -553,7 +554,7 @@ bool core::GAlloc::freeMedium(void *ptr, core::Region *region)
 	// --- slab bookkeeping ---
 	// free_slabs counts completely empty regions. When we hit 2, one gets
 	// returned to the OS. This keeps one warm spare without hoarding.
-	ThreadCache *cache = region->owning_cache;
+	detail::ThreadCache *cache = region->owning_cache;
 	--region->used_count;
 	if (region->used_count == 0)
 		++cache->medium.free_slabs;
@@ -568,14 +569,14 @@ bool core::GAlloc::freeMedium(void *ptr, core::Region *region)
 
 // Small free: push the cell back onto the slab's embedded free list.
 // No headers involved — the cell itself stores the next pointer.
-void core::GAlloc::freeSmall(void *ptr, core::Region *region, RegionTable::Entry::Type size)
+void core::GAlloc::freeSmall(void *ptr, core::detail::Region *region, detail::RegionTable::Entry::Type size)
 {
 	*reinterpret_cast<void **>(ptr) = reinterpret_cast<void *>(region->free_block);
-	region->free_block = reinterpret_cast<Header *>(ptr);
+	region->free_block = reinterpret_cast<detail::Header *>(ptr);
 
-	ThreadCache *cache = region->owning_cache;
+	detail::ThreadCache *cache = region->owning_cache;
 	--region->used_count;
-	ThreadCache::SizeClass &sc = cache->getSizeClass(size);
+	detail::ThreadCache::SizeClass &sc = cache->getSizeClass(size);
 	if (region->used_count == 0)
 		++sc.free_slabs;
 	if (sc.free_slabs >= 2)
@@ -585,9 +586,9 @@ void core::GAlloc::freeSmall(void *ptr, core::Region *region, RegionTable::Entry
 	}
 }
 
-void core::GAlloc::freeSmallRegion(core::Region *region, RegionTable::Entry::Type size)
+void core::GAlloc::freeSmallRegion(core::detail::Region *region, detail::RegionTable::Entry::Type size)
 {
-	mlw_debug_assert_msg(size != RegionTable::Entry::Type::Medium, "tryed to free a medium region in the small path");
+	mlw_debug_assert_msg(size != detail::RegionTable::Entry::Type::Medium, "tryed to free a medium region in the small path");
 
 	Optional<sync::Lock<sync::spin_lock::MCS>> l = nullptr;
 	sync::Lock<sync::spin_lock::MCS>::tryLock(orphan_lock, l);
@@ -598,9 +599,9 @@ void core::GAlloc::freeSmallRegion(core::Region *region, RegionTable::Entry::Typ
 		l->unlock();
 	}
 
-	Region *next = region->next;
-	Region *prev = region->previous;
-	ThreadCache *cache = region->owning_cache;
+	detail::Region *next = region->next;
+	detail::Region *prev = region->previous;
+	detail::ThreadCache *cache = region->owning_cache;
 	if (next)
 	{
 		next->previous = prev;
@@ -620,24 +621,24 @@ void core::GAlloc::freeSmallRegion(core::Region *region, RegionTable::Entry::Typ
 #if defined(MLW_WINDOWS)
 	::VirtualFree(region, 0, MEM_RELEASE);
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	::munmap(region, Region::SMALL_BLOCK_SIZE);
+	::munmap(region, detail::Region::SMALL_BLOCK_SIZE);
 #endif
 }
 
 // Same structure as allocMediumRegion: try orphan pool first, then mmap.
 // Small regions use a bump-pointer free list: every cell is linked during
 // init, aligned to the cell size.
-bool core::GAlloc::allocSmallRegion(core::Region *last_region, core::ThreadCache &cache, RegionTable::Entry::Type size)
+bool core::GAlloc::allocSmallRegion(core::detail::Region *last_region, core::detail::ThreadCache &cache, detail::RegionTable::Entry::Type size)
 {
-	mlw_debug_assert_msg(size != RegionTable::Entry::Type::Medium, "core::GAlloc::allocSmallRegion tryed to alloc a medium region");
+	mlw_debug_assert_msg(size != detail::RegionTable::Entry::Type::Medium, "core::GAlloc::allocSmallRegion tryed to alloc a medium region");
 
 	{
 		sync::Lock lock{mlw_g_alloc.orphan_lock};
 		drainRemoteList(orphan_pool);
-		ThreadCache::SizeClass &sc = orphan_pool.getSizeClass(size);
+		detail::ThreadCache::SizeClass &sc = orphan_pool.getSizeClass(size);
 		if (sc.active != nullptr)
 		{
-			Region *r = sc.active;
+			detail::Region *r = sc.active;
 			sc.active = r->next;
 			if (r->next)
 				r->next->previous = nullptr;
@@ -663,16 +664,16 @@ bool core::GAlloc::allocSmallRegion(core::Region *last_region, core::ThreadCache
 		}
 	}
 
-	Region *new_reg;
+	detail::Region *new_reg;
 #if defined(MLW_WINDOWS)
-	new_reg = static_cast<Region *>(::VirtualAlloc(nullptr, Region::SMALL_BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+	new_reg = static_cast<detail::Region *>(::VirtualAlloc(nullptr, detail::Region::SMALL_BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
 	if (!new_reg)
 	{
 		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
 		return false;
 	}
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	new_reg = static_cast<Region *>(::mmap(nullptr, Region::SMALL_BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+	new_reg = static_cast<detail::Region *>(::mmap(nullptr, detail::Region::SMALL_BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
 	if (new_reg == MAP_FAILED)
 	{
 		MLW_DEBUG_PRINT("failed to virtual alloc a new region in GAlloc");
@@ -692,11 +693,11 @@ bool core::GAlloc::allocSmallRegion(core::Region *last_region, core::ThreadCache
 	// free_block is not actually a Header* here — it's the first cell pointer.
 	// We reuse the Region struct's free_block field for both small and medium.
 	// First cell is aligned to the cell size so every cell in the slab is aligned.
-	new_reg->free_block = reinterpret_cast<Header *>((reinterpret_cast<uptr>(new_reg + 1) + block_size - 1) & ~(block_size - 1));
+	new_reg->free_block = reinterpret_cast<detail::Header *>((reinterpret_cast<uptr>(new_reg + 1) + block_size - 1) & ~(block_size - 1));
 
 	// build the embedded free list: each cell points to the next
 	char *current = reinterpret_cast<char *>(new_reg->free_block);
-	char *end = reinterpret_cast<char *>(new_reg) + Region::SMALL_BLOCK_SIZE;
+	char *end = reinterpret_cast<char *>(new_reg) + detail::Region::SMALL_BLOCK_SIZE;
 	while (current + block_size < end)
 	{
 		char *next = current + block_size;
@@ -717,7 +718,7 @@ bool core::GAlloc::allocSmallRegion(core::Region *last_region, core::ThreadCache
 	}
 
 	sync::WriteLock lock{region_list_lock};
-	region_table.insert(RegionTable::Entry{new_reg, size});
+	region_table.insert(detail::RegionTable::Entry{new_reg, size});
 
 	return true;
 }
@@ -738,7 +739,7 @@ void *core::GAlloc::osAlloc(usize size)
 #endif
 
 	sync::Lock l{os_lock};
-	if (!os_table.insert(OSTable::Entry{ptr, size}))
+	if (!os_table.insert(detail::OSTable::Entry{ptr, size}))
 	{
 		l.unlock();
 #if defined(MLW_WINDOWS)
@@ -756,7 +757,7 @@ void core::GAlloc::osFree(void *ptr)
 
 	sync::Lock l{os_lock};
 
-	Optional<OSTable::Entry> e = os_table.findAndRemove(ptr);
+	Optional<detail::OSTable::Entry> e = os_table.findAndRemove(ptr);
 	l.unlock();
 	if (e.isNone())
 	{
@@ -782,17 +783,17 @@ void core::GAlloc::osFree(void *ptr)
 // since medium blocks need header/free-list surgery that can't be batched.
 // If freeMedium returns true (region was freed), we stop processing that
 // region's remaining remote frees since the memory is gone.
-void core::GAlloc::drainRemoteList(ThreadCache &cache)
+void core::GAlloc::drainRemoteList(detail::ThreadCache &cache)
 {
-	auto drainSmall = [&](ThreadCache::SizeClass &sc, RegionTable::Entry::Type type)
+	auto drainSmall = [&](detail::ThreadCache::SizeClass &sc, detail::RegionTable::Entry::Type type)
 	{
 		if (!sc.has_remove_free)
 			return;
 		sc.has_remove_free.store(false, sync::MemoryOrder::Relaxed);
-		Region *current = sc.active;
+		detail::Region *current = sc.active;
 		while (current)
 		{
-			Region *next = current->next; // save — region may be freed below
+			detail::Region *next = current->next; // save — region may be freed below
 			void *head = current->remote_free.exchange(nullptr, sync::MemoryOrder::AcqRel);
 			if (head)
 			{
@@ -806,7 +807,7 @@ void core::GAlloc::drainRemoteList(ThreadCache &cache)
 				}
 				// splice onto local free list
 				*reinterpret_cast<void **>(tail) = reinterpret_cast<void *>(current->free_block);
-				current->free_block = reinterpret_cast<Header *>(head);
+				current->free_block = reinterpret_cast<detail::Header *>(head);
 				current->used_count -= static_cast<uint32>(count);
 				if (current->used_count == 0)
 					++sc.free_slabs;
@@ -820,18 +821,18 @@ void core::GAlloc::drainRemoteList(ThreadCache &cache)
 		}
 	};
 
-	drainSmall(cache.small_8, RegionTable::Entry::Type::S8);
-	drainSmall(cache.small_16, RegionTable::Entry::Type::S16);
-	drainSmall(cache.small_32, RegionTable::Entry::Type::S32);
-	drainSmall(cache.small_64, RegionTable::Entry::Type::S64);
-	drainSmall(cache.small_128, RegionTable::Entry::Type::S128);
+	drainSmall(cache.small_8, detail::RegionTable::Entry::Type::S8);
+	drainSmall(cache.small_16, detail::RegionTable::Entry::Type::S16);
+	drainSmall(cache.small_32, detail::RegionTable::Entry::Type::S32);
+	drainSmall(cache.small_64, detail::RegionTable::Entry::Type::S64);
+	drainSmall(cache.small_128, detail::RegionTable::Entry::Type::S128);
 	if (cache.medium.has_remove_free)
 	{
 		cache.medium.has_remove_free.store(false, sync::MemoryOrder::Relaxed);
-		Region *current = cache.medium.active;
+		detail::Region *current = cache.medium.active;
 		while (current)
 		{
-			Region *next = current->next; // region can be deleted by freeMedium
+			detail::Region *next = current->next; // region can be deleted by freeMedium
 			void *block = current->remote_free.exchange(nullptr, sync::MemoryOrder::AcqRel);
 			while (block)
 			{
@@ -850,16 +851,16 @@ void core::GAlloc::free(void *ptr)
 {
 	if (ptr == nullptr)
 		return;
-	ThreadCache &cache = getThreadCache();
+	detail::ThreadCache &cache = detail::getThreadCache();
 
 	drainRemoteList(cache);
 
 	// look up which region owns this pointer
-	RegionTable::Entry entry;
+	detail::RegionTable::Entry entry;
 	bool os_region;
 	{
 		sync::ReadLock l{region_list_lock};
-		RegionTable::Entry *e = region_table.find(ptr);
+		detail::RegionTable::Entry *e = region_table.find(ptr);
 		if (e == nullptr)
 		{
 			os_region = true;
@@ -879,7 +880,7 @@ void core::GAlloc::free(void *ptr)
 	// fast path: same-thread free — no locking needed
 	if (entry.ptr->owning_cache == &cache)
 	{
-		if (entry.type == RegionTable::Entry::Type::Medium)
+		if (entry.type == detail::RegionTable::Entry::Type::Medium)
 		{
 			freeMedium(ptr, entry.ptr);
 		}
@@ -911,22 +912,22 @@ void core::GAlloc::free(void *ptr)
 			MLW_COMPILER_BARRIER();
 			switch (entry.type)
 			{
-			case RegionTable::Entry::Type::Medium:
+			case detail::RegionTable::Entry::Type::Medium:
 				entry.ptr->owning_cache->medium.has_remove_free.store(true, sync::MemoryOrder::Release);
 				break;
-			case RegionTable::Entry::Type::S8:
+			case detail::RegionTable::Entry::Type::S8:
 				entry.ptr->owning_cache->small_8.has_remove_free.store(true, sync::MemoryOrder::Release);
 				break;
-			case RegionTable::Entry::Type::S16:
+			case detail::RegionTable::Entry::Type::S16:
 				entry.ptr->owning_cache->small_16.has_remove_free.store(true, sync::MemoryOrder::Release);
 				break;
-			case RegionTable::Entry::Type::S32:
+			case detail::RegionTable::Entry::Type::S32:
 				entry.ptr->owning_cache->small_32.has_remove_free.store(true, sync::MemoryOrder::Release);
 				break;
-			case RegionTable::Entry::Type::S64:
+			case detail::RegionTable::Entry::Type::S64:
 				entry.ptr->owning_cache->small_64.has_remove_free.store(true, sync::MemoryOrder::Release);
 				break;
-			case RegionTable::Entry::Type::S128:
+			case detail::RegionTable::Entry::Type::S128:
 				entry.ptr->owning_cache->small_128.has_remove_free.store(true, sync::MemoryOrder::Release);
 				break;
 			default:
@@ -962,15 +963,15 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 		return nullptr;
 	}
 
-	new_size = (new_size + alignof(Header) - 1) & ~(alignof(Header) - 1);
+	new_size = (new_size + alignof(detail::Header) - 1) & ~(alignof(detail::Header) - 1);
 
-	ThreadCache &cache = getThreadCache();
+	detail::ThreadCache &cache = detail::getThreadCache();
 
-	RegionTable::Entry entry;
+	detail::RegionTable::Entry entry;
 	bool os_region;
 	{
 		sync::ReadLock l{region_list_lock};
-		RegionTable::Entry *e = region_table.find(ptr);
+		detail::RegionTable::Entry *e = region_table.find(ptr);
 		os_region = (e == nullptr);
 		if (!os_region)
 			entry = *e;
@@ -983,14 +984,14 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 
 		// TODO maby not remove and keep index??
 		sync::Lock l{os_lock};
-		Optional<OSTable::Entry> old = os_table.findAndRemove(ptr);
+		Optional<detail::OSTable::Entry> old = os_table.findAndRemove(ptr);
 		if (old.isNone())
 			return nullptr;
 
 		// already big enough — no-op
 		if (rounded <= old->size)
 		{
-			os_table.insert(OSTable::Entry{old->ptr, old->size});
+			os_table.insert(detail::OSTable::Entry{old->ptr, old->size});
 			return ptr;
 		}
 
@@ -999,7 +1000,7 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 		void *remapped = ::mremap(old->ptr, old->size, rounded, MREMAP_MAYMOVE);
 		if (remapped != MAP_FAILED)
 		{
-			os_table.insert(OSTable::Entry{remapped, rounded});
+			os_table.insert(detail::OSTable::Entry{remapped, rounded});
 			return remapped;
 		}
 #endif
@@ -1010,7 +1011,7 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 		{
 			// OOM — restore the old entry so the allocation isn't leaked
 			sync::Lock l2{os_lock};
-			os_table.insert(OSTable::Entry{old->ptr, old->size});
+			os_table.insert(detail::OSTable::Entry{old->ptr, old->size});
 			return nullptr;
 		}
 		mlwMemcpy(fresh, old->ptr, old->size);
@@ -1023,7 +1024,7 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 	}
 
 	// --- small allocs: always alloc + copy + free (no in-place growth) ---
-	if (entry.type != RegionTable::Entry::Type::Medium)
+	if (entry.type != detail::RegionTable::Entry::Type::Medium)
 	{
 		usize old_size = static_cast<usize>(entry.type); // cell size == type value
 		if (new_size <= old_size)
@@ -1038,8 +1039,8 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 	}
 
 	// --- medium allocs: try in-place growth ---
-	Header *header = static_cast<Header *>(ptr) - 1;
-	usize old_usable = header->next_off - sizeof(Header);
+	detail::Header *header = static_cast<detail::Header *>(ptr) - 1;
+	usize old_usable = header->next_off - sizeof(detail::Header);
 
 	if (new_size <= old_usable)
 		return ptr;
@@ -1056,20 +1057,20 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 	}
 
 	// try extending into the next physical block if it's free
-	Region *region = entry.ptr;
-	Header *next_h = reinterpret_cast<Header *>(reinterpret_cast<char *>(header) + header->next_off);
-	bool last_block = static_cast<usize>(reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(region)) >= Region::MEDIUM_BLOCK_SIZE;
+	detail::Region *region = entry.ptr;
+	detail::Header *next_h = reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(header) + header->next_off);
+	bool last_block = static_cast<usize>(reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(region)) >= detail::Region::MEDIUM_BLOCK_SIZE;
 
 	if (!last_block && next_h->align == 0)
 	{
 		usize combined = header->next_off + next_h->next_off;
-		usize combined_usable = combined - sizeof(Header);
+		usize combined_usable = combined - sizeof(detail::Header);
 
 		if (combined_usable >= new_size)
 		{
 			// unlink next_h from free list
-			Header *next_f = next_h->getFreePtr()->next_free_block;
-			Header *prev_f = next_h->getFreePtr()->prev_free_block;
+			detail::Header *next_f = next_h->getFreePtr()->next_free_block;
+			detail::Header *prev_f = next_h->getFreePtr()->prev_free_block;
 			if (prev_f)
 				prev_f->getFreePtr()->next_free_block = next_f;
 			else
@@ -1077,15 +1078,15 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 			if (next_f)
 				next_f->getFreePtr()->prev_free_block = prev_f;
 
-			Header *next_next = reinterpret_cast<Header *>(reinterpret_cast<char *>(next_h) + next_h->next_off);
-			bool next_last = static_cast<usize>(reinterpret_cast<char *>(next_next) - reinterpret_cast<char *>(region)) >= Region::MEDIUM_BLOCK_SIZE;
+			detail::Header *next_next = reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(next_h) + next_h->next_off);
+			bool next_last = static_cast<usize>(reinterpret_cast<char *>(next_next) - reinterpret_cast<char *>(region)) >= detail::Region::MEDIUM_BLOCK_SIZE;
 
 			usize leftover = combined_usable - new_size;
-			if (leftover > MIN_SIZE + sizeof(Header))
+			if (leftover > MIN_SIZE + sizeof(detail::Header))
 			{
 				// split: take what we need, return the rest as a new free block
-				header->next_off = new_size + sizeof(Header);
-				Header *split = reinterpret_cast<Header *>(reinterpret_cast<char *>(header) + header->next_off);
+				header->next_off = new_size + sizeof(detail::Header);
+				detail::Header *split = reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(header) + header->next_off);
 				split->pre_off = header->next_off;
 				split->next_off = reinterpret_cast<char *>(next_next) - reinterpret_cast<char *>(split);
 				split->align = 0;
@@ -1123,7 +1124,7 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 // On Windows: reserve a large virtual range upfront, commit pages incrementally.
 // On Linux: mremap to extend (may relocate the array).
 
-core::RegionTable::RegionTable()
+core::detail::RegionTable::RegionTable()
 {
 #if defined(MLW_WINDOWS)
 	base = static_cast<Entry *>(::VirtualAlloc(nullptr, PLATFORM_INFO.alloc_granularity, MEM_RESERVE, PAGE_READWRITE));
@@ -1148,12 +1149,12 @@ core::RegionTable::RegionTable()
 	capacity = static_cast<index_t>(PLATFORM_INFO.page_size) / sizeof(Entry);
 }
 
-core::RegionTable::~RegionTable()
+core::detail::RegionTable::~RegionTable()
 {
 	distroy();
 }
 
-core::OSTable::OSTable()
+core::detail::OSTable::OSTable()
 {
 #if defined(MLW_WINDOWS)
 	base = static_cast<Entry *>(::VirtualAlloc(nullptr, PLATFORM_INFO.alloc_granularity, MEM_RESERVE, PAGE_READWRITE));
@@ -1178,12 +1179,12 @@ core::OSTable::OSTable()
 	capacity = static_cast<index_t>(PLATFORM_INFO.page_size) / sizeof(Entry);
 }
 
-core::OSTable::~OSTable()
+core::detail::OSTable::~OSTable()
 {
 	distroy();
 }
 
-void core::RegionTable::distroy()
+void core::detail::RegionTable::distroy()
 {
 #if defined(MLW_WINDOWS)
 	::VirtualFree(base, 0, MEM_RELEASE);
@@ -1192,7 +1193,7 @@ void core::RegionTable::distroy()
 #endif
 }
 
-void core::OSTable::distroy()
+void core::detail::OSTable::distroy()
 {
 #if defined(MLW_WINDOWS)
 	::VirtualFree(base, 0, MEM_RELEASE);
@@ -1202,7 +1203,7 @@ void core::OSTable::distroy()
 }
 
 // Binary search for the region containing ptr (range check, not exact match).
-core::RegionTable::Entry *core::RegionTable::find(void *ptr) const
+core::detail::RegionTable::Entry *core::detail::RegionTable::find(void *ptr) const
 {
 	Entry *aligned_base = reinterpret_cast<Entry *>(MLW_ASSUME_ALIGNED(base, 16));
 
@@ -1225,7 +1226,7 @@ core::RegionTable::Entry *core::RegionTable::find(void *ptr) const
 	return nullptr;
 }
 
-core::Optional<core::OSTable::Entry> core::OSTable::findAndRemove(void *ptr)
+core::Optional<core::detail::OSTable::Entry> core::detail::OSTable::findAndRemove(void *ptr)
 {
 	Entry *aligned_base = reinterpret_cast<Entry *>(MLW_ASSUME_ALIGNED(base, 16));
 
@@ -1252,7 +1253,7 @@ core::Optional<core::OSTable::Entry> core::OSTable::findAndRemove(void *ptr)
 	return nullptr;
 }
 
-void core::RegionTable::remove(Region *ptr)
+void core::detail::RegionTable::remove(Region *ptr)
 {
 	Entry *a_base = MLW_ASSUME_ALIGNED(base, 16);
 	// exact match on Region* (not range check) — the Region base address is unique
@@ -1275,7 +1276,7 @@ void core::RegionTable::remove(Region *ptr)
 	panic("GAlloc::RegionTable::remove: removed a pointer that was not in the list");
 }
 
-bool core::RegionTable::insert(Entry &&e)
+bool core::detail::RegionTable::insert(Entry &&e)
 {
 	if (size == capacity)
 		if (!grow())
@@ -1298,7 +1299,7 @@ bool core::RegionTable::insert(Entry &&e)
 	return true;
 }
 
-bool core::OSTable::insert(Entry &&e)
+bool core::detail::OSTable::insert(Entry &&e)
 {
 	if (size == capacity)
 		if (!grow())
@@ -1320,7 +1321,7 @@ bool core::OSTable::insert(Entry &&e)
 	return true;
 }
 
-bool core::RegionTable::grow()
+bool core::detail::RegionTable::grow()
 {
 #if defined(MLW_WINDOWS)
 	if ((capacity * sizeof(Entry) & PLATFORM_INFO.gran_mask) == 0)
@@ -1360,7 +1361,7 @@ bool core::RegionTable::grow()
 #endif
 }
 
-bool core::OSTable::grow()
+bool core::detail::OSTable::grow()
 {
 #if defined(MLW_WINDOWS)
 	if ((capacity * sizeof(Entry) & PLATFORM_INFO.gran_mask) == 0)
@@ -1402,7 +1403,7 @@ bool core::OSTable::grow()
 // to the orphan pool so other threads can adopt them.
 // The orphan_lock is held for the entire migration to prevent races with
 // concurrent adopt attempts.
-core::ThreadCache::~ThreadCache()
+core::detail::ThreadCache::~ThreadCache()
 {
 	if (this == &mlw_g_alloc.orphan_pool)
 		return;
