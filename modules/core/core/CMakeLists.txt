@@ -58,6 +58,11 @@ target_sources(core
         private/thread.cpp
         public/core/proc_context.h
         private/proc_context.cpp
+        public/core/libc/implementation/float_manip.inl
+        private/math/log10.cpp
+        private/math/log2f.cpp
+        private/math/log2.cpp
+        private/math/logf.cpp
 )
 
 if(MLW_ABI_MSVC)

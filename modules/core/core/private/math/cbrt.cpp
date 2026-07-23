@@ -1,21 +1,29 @@
 #include "libc/math.h"
 
-/* origin: FreeBSD /usr/src/lib/msun/src/s_cbrt.c */
-/*
- * ====================================================
- * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
- *
- * Developed at SunPro, a Sun Microsystems, Inc. business.
- * Permission to use, copy, modify, and distribute this
- * software is freely granted, provided that this notice
- * is preserved.
- * ====================================================
- *
- * Optimized by Bruce D. Evans.
- */
-/* cbrt(x)
- * Return cube root of x
- */
+// =============================================================================
+//  Cube root — core::mlwCbrt(f64) / core::mlwCbrt(f32)
+//
+//  Derived from FreeBSD libm (fdlibm):
+//    f64  from  /usr/src/lib/msun/src/s_cbrt.c    — optimized by Bruce D. Evans
+//    f32  from  /usr/src/lib/msun/src/s_cbrtf.c   — float conversion by Ian Lance
+//               Taylor (Cygnus Support); debugged & optimized by Bruce D. Evans
+//  Adapted for Mallow (project types / conventions).
+//
+//  ====================================================
+//  Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+//
+//  Developed at SunPro, a Sun Microsystems, Inc. business.
+//  Permission to use, copy, modify, and distribute this
+//  software is freely granted, provided that this notice
+//  is preserved.
+//  ====================================================
+// =============================================================================
+
+
+//---------------------------------------------
+// f64
+//---------------------------------------------
+
 
 static const uint32
 B1_D = 715094163, /* B1 = (1023-1023/3-0.03306235651)*2**20 */
@@ -29,6 +37,9 @@ P2 =  1.621429720105354466140, /* 0x3ff9f160, 0x4a49d6c2 */
 P3 = -0.758397934778766047437, /* 0xbfe844cb, 0xbee751d9 */
 P4 =  0.145996192886612446982; /* 0x3fc2b000, 0xd4e4edd7 */
 
+/* cbrt(x)
+ * Return cube root of x
+ */
 f64 core::mlwCbrt(f64 x)
 {
 	union {f64 f;  uint64 i;} u = {x};
@@ -101,30 +112,19 @@ f64 core::mlwCbrt(f64 x)
 	return t;
 }
 
+//---------------------------------------------
+// f32
+//---------------------------------------------
 
-/* origin: FreeBSD /usr/src/lib/msun/src/s_cbrtf.c */
-/*
- * Conversion to float by Ian Lance Taylor, Cygnus Support, ian@cygnus.com.
- * Debugged and optimized by Bruce D. Evans.
- */
-/*
- * ====================================================
- * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
- *
- * Developed at SunPro, a Sun Microsystems, Inc. business.
- * Permission to use, copy, modify, and distribute this
- * software is freely granted, provided that this notice
- * is preserved.
- * ====================================================
- */
-/* cbrtf(x)
- * Return cube root of x
- */
+
 
 static const uint32
 B1_F = 709958130, /* B1 = (127-127.0/3-0.03306235651)*2**23 */
 B2_F = 642849266; /* B2 = (127-127.0/3-24/3-0.03306235651)*2**23 */
 
+/* cbrtf(x)
+ * Return cube root of x
+ */
 f32 core::mlwCbrt(f32 x)
 {
 	double r,T;

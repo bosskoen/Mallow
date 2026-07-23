@@ -1,6 +1,28 @@
 #pragma once
 #include "core/compilers.h"
 
+// =============================================================================
+//  libm internal helpers — overflow / underflow / invalid / fp-barrier utilities.
+//
+//  Gathered from musl libc (src/math/, incl. libm.h and the __math_* helpers).
+//  Adapted for Mallow (project types / conventions).
+//
+//  musl is MIT-licensed. Copyright (c) 2005-2020 Rich Felker, et al.
+//
+//  Permission is hereby granted, free of charge, to any person obtaining a copy of
+//  this software and associated documentation files (the "Software"), to deal in
+//  the Software without restriction, including without limitation the rights to
+//  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+//  of the Software, and to permit persons to whom the Software is furnished to do
+//  so, subject to the following conditions:
+//
+//  The above copyright notice and this permission notice shall be included in all
+//  copies or substantial portions of the Software.
+//
+//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND — see the MIT
+//  license text for the full disclaimer.
+// =============================================================================
+
 #if defined(__FAST_MATH__)
 #error "libm TU built with -ffast-math/-Ofast: overflow & nan handling will break"
 #endif
@@ -76,4 +98,9 @@ static MLW_FORCE_INLINE f32 __math_divzerof(uint32 sign)
 static MLW_FORCE_INLINE f64 __math_divzero(uint32 sign)
 {
 	return fp_barrier(sign ? -1.0 : 1.0) / fp_barrier(0.0);
+}
+
+static inline uint32 top16(double x)
+{
+	return core::mlwBitCast<uint64>(x) >> 48;
 }
