@@ -170,7 +170,6 @@
 #endif // MLW_DEBUG
 
 // TODO
-//      document how to use
 //      make more test
 //      make collors
 //      make error {} != args...

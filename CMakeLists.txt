@@ -68,7 +68,7 @@ endif()
 
 add_subdirectory(modules/core/core)
 
-
+#add new moduals here
 
 add_subdirectory(app)
 add_subdirectory(modules/core/entry)
