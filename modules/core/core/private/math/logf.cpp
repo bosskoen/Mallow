@@ -2,7 +2,7 @@
 #include "helpers.hpp"
 
 // =============================================================================
-//  Single-precision base-e logarithm — core::mlwLog(f32)
+//  Single-precision base-e logarithm - core::mlwLog(f32)
 //
 //  Derived from Arm optimized-routines, obtained via musl libc:
 //    kernel  from  math/logf.c
@@ -16,7 +16,7 @@
 static constexpr int LOGF_TABLE_BITS = 4;
 static constexpr int LOGF_POLY_ORDER = 4;
 
-static constexpr int NF = 1 << LOGF_TABLE_BITS;
+static constexpr int N = 1 << LOGF_TABLE_BITS;
 
 static constexpr struct logf_data {
 	struct {
@@ -81,7 +81,7 @@ f32 core::mlwLog(f32 x)
 	   The range is split into N subintervals.
 	   The ith subinterval contains z and c is near its center.  */
 	tmp = ix - 0x3f330000;
-	i = (tmp >> (23 - LOGF_TABLE_BITS)) % NF;
+	i = (tmp >> (23 - LOGF_TABLE_BITS)) % N;
 	k = (int32)tmp >> 23; /* arithmetic shift */
 	iz = ix - (tmp & 0xff800000);
 	invc = __logf_data.tab[i].invc;

@@ -100,7 +100,18 @@ static MLW_FORCE_INLINE f64 __math_divzero(uint32 sign)
 	return fp_barrier(sign ? -1.0 : 1.0) / fp_barrier(0.0);
 }
 
-static inline uint32 top16(double x)
+/* Top 12 bits of a double (sign and exponent bits). */
+static inline uint32 top12(f64 x)
+{
+	return core::mlwBitCast<uint64>(x) >> 52;
+}
+
+static inline uint32 top12(f32 x)
+{
+	return core::mlwBitCast<uint32>(x) >> 20;
+}
+
+static inline uint32 top16(f64 x)
 {
 	return core::mlwBitCast<uint64>(x) >> 48;
 }

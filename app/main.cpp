@@ -209,7 +209,8 @@ static void t10_destroy_joinable_panics() {
 #endif
 
 int32 mallowMain() {
-    println("pagesize = {}", core::PLATFORM_INFO.page_size);
+    f64 x = core::mlwExp10(10.);
+    println("pagesize = {}", x);
 
     t1_void();               println("T1  void .................. ok");
     t2_int();                println("T2  int return ............ ok");

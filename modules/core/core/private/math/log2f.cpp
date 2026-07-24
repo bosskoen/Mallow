@@ -1,5 +1,5 @@
 // =============================================================================
-//  Single-precision base-2 logarithm — core::mlwLog2(f32)
+//  Single-precision base-2 logarithm - core::mlwLog2(f32)
 //
 //  Derived from Arm optimized-routines, obtained via musl libc:
 //    kernel  from  math/log2f.c
@@ -51,7 +51,7 @@ static constexpr struct log2f_data {
 ULP error: 0.752 (nearest rounding.)
 Relative error: 1.9 * 2^-26 (before rounding.)
 */
-static constexpr int N2F = (1 << LOG2F_TABLE_BITS);
+static constexpr int N = (1 << LOG2F_TABLE_BITS);
 
 f32 core::mlwLog2(f32 x)
 {
@@ -80,7 +80,7 @@ f32 core::mlwLog2(f32 x)
 	   The range is split into N subintervals.
 	   The ith subinterval contains z and c is near its center.  */
 	tmp = ix - 0x3f330000;
-	i = (tmp >> (23 - LOG2F_TABLE_BITS)) % N2F;
+	i = (tmp >> (23 - LOG2F_TABLE_BITS)) % N;
 	top = tmp & 0xff800000;
 	iz = ix - top;
 	k = (int32)tmp >> 23; /* arithmetic shift */

@@ -2,7 +2,7 @@
 #include "helpers.hpp"
 
 // =============================================================================
-//  Base-10 logarithm — core::mlwLog10(f64) / core::mlwLog10(f32)
+//  Base-10 logarithm - core::mlwLog10(f64) / core::mlwLog10(f32)
 //
 //  Derived from FreeBSD libm (fdlibm), obtained via musl libc:
 //    f64  from  /usr/src/lib/msun/src/e_log10.c   (Developed at SunSoft)

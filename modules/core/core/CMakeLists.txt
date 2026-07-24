@@ -63,6 +63,14 @@ target_sources(core
         private/math/log2f.cpp
         private/math/log2.cpp
         private/math/logf.cpp
+        private/math/exp10.cpp
+        private/math/expf_data.inl
+        private/math/powf_data.inl
+        private/math/exp_data.inl
+        private/math/pow_data.inl
+        private/math/expf.cpp
+        private/math/powf.cpp
+        private/math/pow.cpp
 )
 
 if(MLW_ABI_MSVC)

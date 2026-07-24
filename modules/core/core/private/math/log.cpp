@@ -2,7 +2,7 @@
 #include "math/helpers.hpp"
 
 // =============================================================================
-//  Double-precision base-2 logarithm — core::mlwLog2(f64)
+//  Double-precision base-e logarithm - core::mlwLog(f64)
 //
 //  Derived from Arm optimized-routines, obtained via musl libc:
 //    kernel  from  math/log.c
@@ -348,8 +348,7 @@ static constexpr struct log_data {
 		#endif
 };
 
-#define ND (1 << LOG_TABLE_BITS)
-
+#define N (1 << LOG_TABLE_BITS)
 
 f64 core::mlwLog(f64 x)
 {
@@ -408,7 +407,7 @@ f64 core::mlwLog(f64 x)
 	   The range is split into N subintervals.
 	   The ith subinterval contains z and c is near its center.  */
 	tmp = ix - 0x3fe6000000000000;
-	i = (tmp >> (52 - LOG_TABLE_BITS)) % ND;
+	i = (tmp >> (52 - LOG_TABLE_BITS)) % N;
 	k = (int64)tmp >> 52; /* arithmetic shift */
 	iz = ix - (tmp & 0xfffULL << 52);
 	invc = __log_data.tab[i].invc;

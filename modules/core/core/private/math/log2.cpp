@@ -1,5 +1,5 @@
 // =============================================================================
-//  Double-precision base-2 logarithm — core::mlwLog2(f64)
+//  Double-precision base-2 logarithm - core::mlwLog2(f64)
 //
 //  Derived from Arm optimized-routines, obtained via musl libc:
 //    kernel  from  math/log2.c
@@ -17,7 +17,7 @@ static constexpr int LOG2_TABLE_BITS = 6;
 static constexpr int LOG2_POLY_ORDER = 7;
 static constexpr int LOG2_POLY1_ORDER = 11;
 
-static constexpr int N2D = (1 << LOG2_TABLE_BITS);
+static constexpr int N = (1 << LOG2_TABLE_BITS);
 
 static constexpr struct log2_data {
 	f64 invln2hi;
@@ -287,7 +287,7 @@ f64 core::mlwLog2(f64 x)
 	   The range is split into N subintervals.
 	   The ith subinterval contains z and c is near its center.  */
 	tmp = ix - 0x3fe6000000000000;
-	i = (tmp >> (52 - LOG2_TABLE_BITS)) % N2D;
+	i = (tmp >> (52 - LOG2_TABLE_BITS)) % N;
 	k = (int64)tmp >> 52; /* arithmetic shift */
 	iz = ix - (tmp & 0xfffULL << 52);
 	invc = __log2_data.tab[i].invc;

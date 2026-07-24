@@ -23,7 +23,8 @@ got it (or "—" if they wrote it) · **License** · **Notice** where the text l
 | `core/core/private/math/cbrt.cpp` ; `mlwCbrt` | musl libc (`src/math/cbrt.c`, `cbrf.c`) | Sun Microsystems (SunPro) | SunPro notice (permissive) | file header |
 | `core/core/private/math/helpers.hpp` — `__math_*`, `fp_barrier*`, `eval_as_*` | musl libc (`src/math/`, `libm.h`) | — | MIT | file header |
 | `core/core/private/math/log10.cpp` — `mlwLog10` (f64/f32) | musl libc (`e_log10.c`, `e_log10f.c`) | FreeBSD/fdlibm → Sun Microsystems (SunSoft/SunPro) | SunPro notice (permissive) | file header |
-| `core/core/private/math/{log,logf,log2,log2f}.cpp` — `mlwLog`, `mlwLog2` | musl libc (Arm `math/log*.c` + `*_data.c`) | Arm optimized-routines | MIT (SPDX) | file header |
+| | `.../private/math/{log,logf,log2,log2f,exp,expf,pow,powf}.cpp` + `{exp,expf,pow,powf}_data.inl` — `mlwLog`, `mlwLog2`, `mlwExp`, `mlwExp2`, `mlwPow` | musl libc (`math/*.c` + `*_data.c`) | Arm optimized-routines | MIT (SPDX) | file header |
+| `core/core/private/math/exp10.cpp` — `mlwExp10` (f64/f32) | musl libc (`exp10.c`, `exp10f.c`) | — | MIT | file header |
 
 <!--
 Add rows as you pull things in. When Origin names a third party (fdlibm / Arm / Sun),
