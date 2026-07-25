@@ -45,14 +45,6 @@ bool test_is_float() {
 // or skip the malloc benchmarks.
 
 #include "core/memory/galloc.h"
-#include <cstdio>
-#include <cstdlib> // ::malloc, ::free
-
-#if defined(MLW_LINUX) || defined(MLW_MAC)
-#include <time.h>
-#elif defined(MLW_WINDOWS)
-#include <windows.h>
-#endif
 
 using namespace core;
 
@@ -81,18 +73,6 @@ static bool is_aligned(void* p, usize align) {
 	return (reinterpret_cast<uptr>(p) & (align - 1)) == 0;
 }
 
-static uint64 now_ns() {
-#if defined(MLW_LINUX) || defined(MLW_MAC)
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return static_cast<uint64>(ts.tv_sec) * 1000000000ULL + static_cast<uint64>(ts.tv_nsec);
-#elif defined(MLW_WINDOWS)
-	static LARGE_INTEGER freq = []{ LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
-	LARGE_INTEGER count;
-	QueryPerformanceCounter(&count);
-	return static_cast<uint64>(static_cast<double>(count.QuadPart) / freq.QuadPart * 1e9);
-#endif
-}
 
 // prevent the compiler from optimizing away allocations
 static volatile void* bench_sink;
@@ -330,8 +310,8 @@ bool test_alignment() {
 			void* p = mlw_g_alloc.alignAlloc(s, a);
 			if (!p) return false;
 			if (!is_aligned(p, a)) {
-				printf("    alignment fail: size=%llu align=%llu ptr=%p\n",
-					(unsigned long long)s, (unsigned long long)a, p);
+				println("    alignment fail: size={} align={} ptr={}\n",
+					s, a, p);
 				mlw_g_alloc.free(p);
 				return false;
 			}
@@ -539,142 +519,6 @@ bool test_alloc_zero() {
 	void* p = mlw_g_alloc.alloc(0);
 	// either nullptr or a valid pointer is acceptable
 	if (p) mlw_g_alloc.free(p);
-	return true;
-}
-
-// ============================================================================
-//  Benchmarks
-// ============================================================================
-
-// Throughput benchmark: N alloc/free cycles.
-// Prints ns/op for both galloc and malloc.
-static bool run_bench(const char* label, usize size, int iterations) {
-	// --- galloc ---
-	uint64 t0 = now_ns();
-	for (int i = 0; i < iterations; ++i) {
-		void* p = mlw_g_alloc.alloc(size);
-		bench_sink = p;
-		mlw_g_alloc.free(p);
-	}
-	uint64 t1 = now_ns();
-
-	// --- malloc ---
-	uint64 t2 = now_ns();
-	for (int i = 0; i < iterations; ++i) {
-		void* p = ::malloc(size);
-		bench_sink = p;
-		::free(p);
-	}
-	uint64 t3 = now_ns();
-
-	uint64 galloc_ns = (t1 - t0) / static_cast<uint64>(iterations);
-	uint64 malloc_ns = (t3 - t2) / static_cast<uint64>(iterations);
-
-	printf("    %-20s  galloc: %4llu ns/op    malloc: %4llu ns/op\n",
-		label,
-		(unsigned long long)galloc_ns,
-		(unsigned long long)malloc_ns);
-
-	return true;
-}
-
-// Bulk benchmark: alloc N blocks, then free all. Tests sustained throughput
-// and region management, not just the hot single-block cache.
-static bool run_bench_bulk(const char* label, usize size, int count) {
-	void** ptrs = static_cast<void**>(::malloc(count * sizeof(void*)));
-	if (!ptrs) return false;
-
-	// --- galloc ---
-	uint64 t0 = now_ns();
-	for (int i = 0; i < count; ++i) ptrs[i] = mlw_g_alloc.alloc(size);
-	uint64 t1 = now_ns();
-	for (int i = 0; i < count; ++i) mlw_g_alloc.free(ptrs[i]);
-	uint64 t2 = now_ns();
-
-	uint64 galloc_alloc = (t1 - t0) / static_cast<uint64>(count);
-	uint64 galloc_free  = (t2 - t1) / static_cast<uint64>(count);
-
-	// --- malloc ---
-	uint64 t3 = now_ns();
-	for (int i = 0; i < count; ++i) ptrs[i] = ::malloc(size);
-	uint64 t4 = now_ns();
-	for (int i = 0; i < count; ++i) ::free(ptrs[i]);
-	uint64 t5 = now_ns();
-
-	uint64 malloc_alloc = (t4 - t3) / static_cast<uint64>(count);
-	uint64 malloc_free  = (t5 - t4) / static_cast<uint64>(count);
-
-	printf("    %-20s  galloc: %4llu/%4llu ns  malloc: %4llu/%4llu ns  (alloc/free)\n",
-		label,
-		(unsigned long long)galloc_alloc, (unsigned long long)galloc_free,
-		(unsigned long long)malloc_alloc, (unsigned long long)malloc_free);
-
-	::free(ptrs);
-	return true;
-}
-
-bool test_bench_throughput() {
-	constexpr int N = 500000;
-	printf("\n    --- alloc/free cycle (N=%d) ---\n", N);
-	run_bench("8 byte",    8,      N);
-	run_bench("64 byte",   64,     N);
-	run_bench("128 byte",  128,    N);
-	run_bench("256 byte",  256,    N);
-	run_bench("1 KB",      1024,   N);
-	run_bench("4 KB",      4096,   N);
-	run_bench("64 KB",     65536,  N);
-	run_bench("256 KB",    262144, N);
-	run_bench("1 MB (OS)", 1 << 20, N / 10); // fewer iterations for OS path
-	return true;
-}
-
-bool test_bench_bulk() {
-	printf("\n    --- bulk alloc then free ---\n");
-	run_bench_bulk("8 byte x50000",    8,     50000);
-	run_bench_bulk("64 byte x50000",   64,    50000);
-	run_bench_bulk("128 byte x50000",  128,   50000);
-	run_bench_bulk("256 byte x10000",  256,   10000);
-	run_bench_bulk("1 KB x10000",      1024,  10000);
-	run_bench_bulk("4 KB x5000",       4096,  5000);
-	return true;
-}
-
-// Mixed workload benchmark: alternate between small and medium allocations,
-// free in a different order. More realistic than pure alloc/free cycles.
-bool test_bench_mixed_workload() {
-	constexpr int COUNT = 50000;
-	void** ptrs = static_cast<void**>(::malloc(COUNT * sizeof(void*)));
-	if (!ptrs) return false;
-
-	// galloc
-	uint64 t0 = now_ns();
-	for (int i = 0; i < COUNT; ++i) {
-		usize s = (i & 1) ? 32 : 1024; // alternate small/medium
-		ptrs[i] = mlw_g_alloc.alloc(s);
-	}
-	// free in stride-3 pattern
-	for (int i = 0; i < COUNT; i += 3) mlw_g_alloc.free(ptrs[i]);
-	for (int i = 1; i < COUNT; i += 3) mlw_g_alloc.free(ptrs[i]);
-	for (int i = 2; i < COUNT; i += 3) mlw_g_alloc.free(ptrs[i]);
-	uint64 t1 = now_ns();
-
-	// malloc
-	uint64 t2 = now_ns();
-	for (int i = 0; i < COUNT; ++i) {
-		usize s = (i & 1) ? 32 : 1024;
-		ptrs[i] = ::malloc(s);
-	}
-	for (int i = 0; i < COUNT; i += 3) ::free(ptrs[i]);
-	for (int i = 1; i < COUNT; i += 3) ::free(ptrs[i]);
-	for (int i = 2; i < COUNT; i += 3) ::free(ptrs[i]);
-	uint64 t3 = now_ns();
-
-	printf("\n    --- mixed workload (N=%d) ---\n", COUNT);
-	printf("    galloc: %llu ms    malloc: %llu ms\n",
-		(unsigned long long)(t1 - t0) / 1000000ULL,
-		(unsigned long long)(t3 - t2) / 1000000ULL);
-
-	::free(ptrs);
 	return true;
 }
 

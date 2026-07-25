@@ -1,11 +1,7 @@
 #core/core/test/CMakeLits.txt
-add_library(core_test STATIC
-            test.cpp
-            test_galloc_threaded.cpp
-            math.cpp
+
+
+set_property(GLOBAL APPEND PROPERTY MLW_TEST_SOURCES 
+            ${CMAKE_CURRENT_SOURCE_DIR}/test.cpp
             )
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.. core)
-
-target_link_libraries(core_test core::core)
-
+set_property(GLOBAL APPEND PROPERTY MLW_MODULES core::core)

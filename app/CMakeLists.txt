@@ -1,14 +1,15 @@
 #app/CMakeLists.txt
 
-add_library(my_app STATIC)
+add_executable(Mallow)
 
-target_sources(my_app
+target_sources(Mallow
     PRIVATE
         main.cpp
 )
 
-target_link_libraries(my_app
+target_link_libraries(Mallow
     PRIVATE
         core::core
-        # physics::physics   <- uncomment when you need it
+        entry
 )
+

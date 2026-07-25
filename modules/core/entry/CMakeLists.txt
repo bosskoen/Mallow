@@ -1,16 +1,11 @@
 #core/entry/CMakeLists.txt
 
-add_executable(entry private/main.cpp)
+add_library(entry STATIC private/main.cpp)
+
+target_link_libraries(entry core::core)
 
 if(MSVC)
-    target_link_options(entry PRIVATE /ignore:4210)
-    #target_link_options(entry PRIVATE /VERBOSE)
+    target_link_options(entry INTERFACE /INCLUDE:mlwStart /ignore:4210)
+else()
+    target_link_options(entry INTERFACE  -u _start_c)
 endif()
-
-target_link_libraries(entry PRIVATE core::core my_app)
-
-set_target_properties(entry PROPERTIES
-    OUTPUT_NAME ${MALLOW_APP_NAME}
-)
-
-

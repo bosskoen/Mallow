@@ -15,11 +15,13 @@ Mallow's libc + runtime: types, traits, libm, allocation (galloc), printing / io
 threading, CRT bootstrap.
 - [ ] finish filling out the surface over time when needed
 - [ ] add a exit thread function
-- [ ] fix printing a function (print("{}", core::mlwExp10(1.0)))
+- [ ] fix printing a function (print("{}", core::mlwExp10(1.0))) , printing consts/casts
 - [ ] look into printing argument count valedation
 - [ ] add format option i.e. print to hex, print with presision
 - [ ] add thread hangup function
 - [ ] add type erased error type
+- [ ] make libm constexpr
+- [ ] add __chkstk() and remove the fully commited stak
 
 
 ### entry
@@ -46,25 +48,25 @@ you need.
 - [ ] start with `toml`
 - [ ] decide if formats share a `Serialize` / `Deserialize` interface (its own small module)
       or stay independent
----
+--- 
 
 ## Test system  *(current focus)*
 
-The runner discovers `bool test_*()` and generates `all_tests`.
-- [ ] rename `test/` → `tests/` so discovery finds it (and fix the `CMakeLits.txt` typo)
-- [ ] decide the config: freestanding (matches what ships, report via core io) vs. hosted
-      `<cstdio>` — leaning freestanding, since core defines libc symbols that clash with a
-      hosted CRT
-- [ ] move module registration into the generated `all_tests` CMake so a second tested
-      module doesn't double-`add_subdirectory` `core`
+The runner discovers `bool test_*()` and generates the dispatch main.cpp; the root build compiles it into the tests exe.
 - [ ] first real test under `core`, end to end
+- [ ] generation is configure-time (`execute_process`); move to a build-time
+      `add_custom_command` so it regenerates on test edits without the per-configure cost
+- [ ] rewrite the `.bat` files for the folded-in flow (`build --target tests`; drop the six-step version)
+- [ ] "run only these tests" — test selection / filtering
+
+
 
 ---
 
 ## Systems / cross-cutting
 
-- [ ] `run` app name is duplicated in `./definitions.cmake` (`MALLOW_APP_NAME`) and the run
-      script — de-duplicate (config file / arg / auto-detect).
+- [ ] app exe name is hardcoded in `app/CMakeLists.txt` (the `Mallow` target) and the run
+      scripts (`run.bat` / `run.sh`) — make renaming a single edit (config / arg / auto-detect).
 - [ ] re-enable LTO once the MSVC issue clears
 - [ ] per-module static vs. dynamic link switch
 - [ ] scaffold-a-module script (module creation script) (folder + `CMakeLists.txt`)

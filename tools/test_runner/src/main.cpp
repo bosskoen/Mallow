@@ -6,6 +6,14 @@
 
 namespace fs = std::filesystem;
 
+// ---- knobs: change these to match your entry / harness --------------------
+// The symbol your entry's mlwStart calls into. The generated dispatcher defines it.
+static const char *const ENTRY_SYMBOL = "mallowMain";
+// A hand-written header declaring the reporting interface the dispatcher calls.
+// Simplest home: a public header in core, so `tests` gets it by linking core::core.
+static const char *const REPORT_HEADER = "core/macro.h";
+// ---------------------------------------------------------------------------
+
 struct Module
 {
     std::string name;
@@ -86,6 +94,7 @@ int get_indentement(const std::string &line)
     }
     return x;
 }
+
 void find_test_functions_in_dir(Module &mod, const fs::path &path)
 {
     for (auto &entry : fs::directory_iterator(path))
@@ -105,6 +114,10 @@ void find_test_functions_in_dir(Module &mod, const fs::path &path)
 
         while (std::getline(file, line))
         {
+            size_t first = line.find_first_not_of(" \t");
+            if (first == std::string::npos) continue;
+            if (line.compare(first, 2, "//") == 0) continue;
+
             if (line.find("namespace") != std::string::npos && line.find(mod.ns) != std::string::npos)
             {
                 in_namespace = true;
@@ -141,88 +154,49 @@ void find_test_functions(Module &mod)
     find_test_functions_in_dir(mod, tests_dir);
 }
 
+// Writes the dispatch main. Freestanding: defines ENTRY_SYMBOL (not `int main`) and reports
+// through the mlw_test:: interface (not printf), so it links under the freestanding build.
+// The mlw_test:: functions are hand-written once against core's io; see REPORT_HEADER.
 void write_main(const std::list<Module> &mods, const fs::path &outdir)
 {
     fs::create_directories(outdir);
     std::ofstream file(outdir / "main.cpp");
 
     file << "// AUTO GENERATED - DO NOT EDIT\n\n";
-    file << "#include <cstdio>\n\n";
+    file << "#include \"" << REPORT_HEADER << "\"  // printing\n\n";
+
+    // forward-declare every discovered test function in its namespace
+    for (const Module &mod : mods)
+    {
+        if (mod.functions.empty())
+            continue;
+        file << "namespace " << mod.ns << " {\n";
+        for (const std::string &fn : mod.functions)
+            file << "    extern bool " << fn << "();\n";
+        file << "}\n\n";
+    }
+
+    // entry point: entry's mlwStart calls this; its return goes to mlwExit
+    file << "int32 " << ENTRY_SYMBOL << "()\n{\n";
+    file << "    int passed = 0;\n";
+    file << "    int failed = 0;\n\n";
 
     for (const Module &mod : mods)
     {
         if (mod.functions.empty())
             continue;
-        file << "namespace " << mod.ns << "{\n";
+        file << "    println(\"" << mod.name << "\");\n";
         for (const std::string &fn : mod.functions)
         {
-            file << "\textern bool " << fn << "();\n";
+            file << "    if (" << mod.ns << "::" << fn << "()) { ++passed; println(\"  PASS  " << fn << "\"); }\n";
+            file << "    else { ++failed; println(\" FAIL  " << fn << "\"); }\n";
         }
-        file << "}\n\n";
+        file << "\n";
     }
 
-    // simple pass/fail tracking
-    file << "int main() {\n";
-    file << "    int passed = 0;\n";
-    file << "    int failed = 0;\n\n";
-
-    for (auto &mod : mods)
-    {
-        if (mod.functions.empty())
-            continue;
-        file << "    printf(\"=== " << mod.name << " ===\\n\");\n";
-        for (auto &fn : mod.functions)
-        {
-            file << "    if (" << mod.ns << "::" << fn << "()) {\n";
-            file << "        passed++;\n";
-            file << "        printf(\"  PASS  " << fn << "\\n\");\n";
-            file << "    } else {\n";
-            file << "        failed++;\n";
-            file << "        printf(\"  FAIL  " << fn << "\\n\");\n";
-            file << "    }\n";
-        }
-        file << "    printf(\"\\n\");\n\n";
-    }
-
-    file << "    printf(\"\\n%d passed, %d failed\\n\", passed, failed);\n";
+    file << "    println(\"{} passed, {} failed\", passed, failed);\n";
     file << "    return failed > 0 ? 1 : 0;\n";
     file << "}\n";
-}
-
-void write_cmake(const std::list<Module> &mods, const fs::path &out_dir, const fs::path &repo_root)
-{
-    std::ofstream file(out_dir / "CMakeLists.txt");
-
-    file << "# AUTO GENERATED - DO NOT EDIT\n\n";
-    file << "cmake_minimum_required(VERSION 3.21)\n";
-    file << "project(all_tests LANGUAGES CXX)\n\n";
-    file << "set(CMAKE_CXX_STANDARD 20)\n";
-    file << "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n";
-    file << "include(${CMAKE_CURRENT_SOURCE_DIR}/../../tools/cmake/definitions.cmake)\n";
-    file << "include(${CMAKE_CURRENT_SOURCE_DIR}/../../tools/cmake/warnings.cmake)\n\n";
-    file << "if(MSVC)\n";
-    file << "    add_compile_options(/Zc:preprocessor)\n";
-    file << "endif()\n\n";
-    // add each module
-    for (auto &mod : mods)
-    {
-        file << "add_subdirectory(" << (fs::absolute(repo_root / mod.path / "tests")).generic_string() << " " << mod.name << ")\n";
-    }
-    file << "\n";
-
-    // collect all test cpp files
-    file << "add_executable(all_tests\n";
-    file << "    main.cpp\n";
-    file << ")\n\n";
-
-    // link against each module
-    file << "target_link_libraries(all_tests\n";
-    file << "    PRIVATE\n";
-    for (auto &mod : mods)
-    {
-        file << "        " << mod.name << "_test" << "\n";
-    }
-    file << ")\n";
 }
 
 int main()
@@ -233,16 +207,11 @@ int main()
     find_modules(module_start, mods);
     filter_test_modules(mods);
     for (Module &m : mods)
-    {
         path_to_name(m);
-    }
     for (Module &m : mods)
-    {
         find_test_functions(m);
-    }
 
     write_main(mods, fs::path(ROOT_DIR) / "generated" / "tests");
-    write_cmake(mods, fs::path(ROOT_DIR) / "generated" / "tests", fs::path(ROOT_DIR));
 
     return 0;
 }

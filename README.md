@@ -1,10 +1,10 @@
 # Mallow
 
-A modular C++20 template. It drops the C++ standard library (`libc++`) and builds
-small, self-contained modules on top of a minimal C runtime of its own. Every module
-is a self-contained CMake target reusable across Mallow-compatible projects — they
-build on `core`, so they are not drop-in for an arbitrary unrelated project — and
-nothing allocates or does I/O behind your back.
+A modular C++20 template. It drops the C++ standard library (`libc++`) and builds small,
+self-contained modules on top of a minimal C runtime of its own. Every module is a
+self-contained CMake target reusable across Mallow-compatible projects — they build on
+`core`, so they are not drop-in for an arbitrary unrelated project. Nothing is hidden behind
+a binary: you link a module, so you have its source.
 
 This README is the how-to-use-it manual. For *why* it is built this way, see
 [`DESIGN.md`](DESIGN.md). For current state and TODOs, see [`PROGRESS.md`](PROGRESS.md).
@@ -33,7 +33,7 @@ What is actually tested today:
 The build is freestanding-style: it configures with `-ffreestanding` / `-nostdlib`
 (GCC/Clang) or `/NODEFAULTLIB` with a custom `/ENTRY:mlwStart` (MSVC), links only
 `kernel32` (Windows) or `libgcc` (Linux), and disables RTTI and exceptions everywhere.
-The program entry point is provided by the `entry` module, not the CRT.
+The program entry point (`mlwStart`) is provided by the `entry` module, not the CRT.
 
 ---
 
@@ -63,9 +63,9 @@ tools/run.bat        # Windows
 tools/run.sh         # Linux
 ```
 
-The executable name comes from `MALLOW_APP_NAME` in `./definitions.cmake` (the `entry`
-target's `OUTPUT_NAME`). The same name is also hardcoded in the run script, so to rename
-the app you change it in **both** places. (Tracked in `PROGRESS.md`.)
+The executable name comes from `MALLOW_APP_NAME` in `./definitions.cmake` (it's `my_app`'s
+`OUTPUT_NAME`). The same name is also hardcoded in the run script, so to rename the app you
+change it in **both** places. (Tracked in `PROGRESS.md`.)
 
 ---
 
@@ -73,21 +73,21 @@ the app you change it in **both** places. (Tracked in `PROGRESS.md`.)
 
 ```
 Mallow/
-    app/                    your program code, built as `my_app`; the place you edit per project
+    app/                    your program, built as `Mallow` — the executable
     modules/
         core/               group folder (no CMakeLists.txt of its own)
-            core/           module: minimal libc layer (types, mem, math, ...)
-            entry/          module: the final executable — provides the entry point,
-                            links core::core + my_app, output name = MALLOW_APP_NAME
+            core/           module: minimal libc + runtime (types, mem, math, io, threading)
+            entry/          module: the CRT/startup slab (a library) — provides mlwStart,
+                            linked into the executable
     tools/
         build.*  test.*  run.*        wrapper scripts
         cmake/
             definitions.cmake         arch/compiler/OS detection macros
             warnings.cmake            warning-level helpers (see below)
             Docs.cmake                docs generation
-        test_runner/                  standalone test generator (its own CMake project)
-    definitions.cmake       root-level definitions include
-    CmakeLists.txt          root build: toolchain flags, module wiring
+        test_runner/                  the test-dispatcher generator (built isolated)
+    definitions.cmake       root-level definitions include (MALLOW_APP_NAME lives here)
+    CmakeLists.txt          root build: toolchain flags, module wiring, test harness
 ```
 
 A **group folder** (like `modules/core`) has no `CMakeLists.txt` and just nests other
@@ -104,7 +104,7 @@ modules. A **module** is the first folder down any branch that *does* have a
 my_module/
     public/      headers exposed to consumers        (required, even if empty)
     private/     internal headers + source           (required, even if empty)
-    tests/       optional; test runner skips a module with no tests/CMakeLists.txt
+    tests/       optional; a module with no tests/CMakeLists.txt is skipped
         CMakeLists.txt
         test_*.cpp
     CMakeLists.txt
@@ -114,7 +114,7 @@ my_module/
 
 ```cmake
 add_library(memory STATIC)
-add_library(core::memory ALIAS memory)
+add_library(memory::memory ALIAS memory)
 
 target_sources(memory
     PRIVATE
@@ -129,7 +129,7 @@ target_include_directories(memory
 # every module links core::core (except core itself)
 target_link_libraries(memory PUBLIC core::core)
 
-if(BUILD_TESTING)
+if(MLW_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 ```
@@ -164,15 +164,15 @@ endif()
 
 ### Linking modules into the app
 
-`app/CMakeLists.txt` builds `my_app` (your code) and is the file you edit per project —
-list the modules `my_app` uses. `entry` then links `my_app` + `core::core` and produces
-the final executable, so you don't touch `entry`.
+`app/CMakeLists.txt` builds `Mallow` — **the executable**, and the file you edit per
+project. List the modules `Mallow` uses, plus `entry` (the startup slab that carries
+`mlwStart`). You don't touch `entry`.
 
 ```cmake
-target_link_libraries(my_app
+target_link_libraries(Mallow
     PRIVATE
+        entry
         core::core
-        # physics::physics
 )
 ```
 
@@ -216,9 +216,11 @@ new one, so you won't get duplicate-level warnings.
 
 ## Testing
 
-Tests are plain functions the test runner discovers, generates a `main` for, builds, and
-runs. You do not register tests anywhere — you follow the naming rules and the runner
-finds them.
+Tests are plain `bool test_*()` functions the runner discovers — you never register a test,
+you follow the naming rules and it finds them. `tests` is an executable **in the main
+build** (excluded from the default build), compiled under the same freestanding config as
+everything else; pass/fail is reported with core's print macros. There is no separate test
+project.
 
 ### Writing a test
 
@@ -237,29 +239,44 @@ bool test_it_works() {
 
 Rules the runner depends on:
 - The namespace is the module path relative to `modules/`, with `/` replaced by `_`,
-  plus `_test`. So `modules/core/core/` → `core_core_test`, `modules/core/memory/` →
-  `core_memory_test`.
+  plus `_test`. So `modules/core/core/` → `core_core_test`.
 - Every test function is exactly `bool test_name()` — no parameters, no overloads.
 - Return `true` for pass, `false` for fail.
-- Keep one namespace per file, and don't open nested scopes inside the namespace before
+- Keep one namespace per file, and don't open a nested scope inside the namespace before
   the first test function (the runner tracks `{`/`}` depth to find where the namespace
   ends).
-- A module needs a `tests/CMakeLists.txt` to be picked up at all; an empty placeholder
-  is fine.
+- Tests live in a `tests/` folder; a module needs `tests/CMakeLists.txt` to be picked up.
+
+### Adding tests to a module
+
+The module's own `CMakeLists.txt` pulls its tests in (gated on the switch):
+
+```cmake
+if(MLW_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
+```
+
+`tests/CMakeLists.txt` builds no target — it just registers the module and its test
+sources into the two global lists the root build reads:
+
+```cmake
+# modules/.../<name>/tests/CMakeLists.txt
+set_property(GLOBAL APPEND PROPERTY MLW_TEST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_something.cpp)   # absolute paths
+set_property(GLOBAL APPEND PROPERTY MLW_MODULES <module_name>)
+```
 
 ### Running the tests
 
-```
-tools/test.bat       # Windows
-tools/test.sh        # Linux
-```
+`tests` is excluded from the default build, so build it explicitly:
 
-This builds `tools/test_runner`, which scans `modules/`, generates
-`generated/tests/main.cpp` and its CMake, then builds and runs `all_tests`. Output is a
-`PASS`/`FAIL` line per test and a final count; the process exits non-zero if anything
-failed.
+- **Visual Studio:** build the `tests` project directly (it won't build as part of
+  ALL_BUILD).
+- **Non-VS / command line:** `tools/test.bat`, or `cmake --build build --target tests`
+  and run the resulting exe.
 
-The test build is a **separate, standalone** CMake project — it does not attach to the
-main build. Note the tests currently compile in a hosted configuration (they use
-`<cstdio>` for reporting), which is not the freestanding configuration the main project
-builds under; reconciling that is an open item in `PROGRESS.md`.
+Discovery runs at **configure** time, so a newly added test isn't seen until CMake
+reconfigures. Adding a new `bool test_*()` **function** to an existing file needs this — run
+`tools/test.bat` (it reconfigures) or trigger a reconfigure in your IDE, or the new function
+won't be in the generated dispatcher.

@@ -78,6 +78,7 @@ if(MLW_ABI_MSVC)
         private/windows_crt/crt.cpp
         private/windows_crt/init_thread.cpp
     )
+
 else()  # GCC / Clang → Itanium ABI
     target_sources(core PRIVATE
         private/itanium_crt/crt.cpp
@@ -96,10 +97,32 @@ else()  # Clang in gnu-mode
 endif()
 
 if(MSVC)
-    set_source_files_properties(private/math/exp.cpp private/math/cbrt.cpp private/math/log.cpp
+    set_source_files_properties(private/math/exp.cpp private/math/cbrt.cpp private/math/log.cpp         private/math/log10.cpp
+        private/math/log2f.cpp
+        private/math/log2.cpp
+        private/math/logf.cpp
+        private/math/exp10.cpp
+        private/math/expf_data.inl
+        private/math/powf_data.inl
+        private/math/exp_data.inl
+        private/math/pow_data.inl
+        private/math/expf.cpp
+        private/math/powf.cpp
+        private/math/pow.cpp
         PROPERTIES COMPILE_OPTIONS "/fp:precise;/fp:contract")
 else()
-    set_source_files_properties(private/math/exp.cpp private/math/cbrt.cpp private/math/log.cpp
+    set_source_files_properties(private/math/exp.cpp private/math/cbrt.cpp private/math/log.cpp        private/math/log10.cpp
+        private/math/log2f.cpp
+        private/math/log2.cpp
+        private/math/logf.cpp
+        private/math/exp10.cpp
+        private/math/expf_data.inl
+        private/math/powf_data.inl
+        private/math/exp_data.inl
+        private/math/pow_data.inl
+        private/math/expf.cpp
+        private/math/powf.cpp
+        private/math/pow.cpp
         PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=fast")
 endif()
 
@@ -112,3 +135,6 @@ target_include_directories(core
 )
 
 
+if(MLW_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
