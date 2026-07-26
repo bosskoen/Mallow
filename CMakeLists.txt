@@ -127,26 +127,31 @@ if(MLW_BUILD_TESTS)
               ${CMAKE_BINARY_DIR}/test_runner/Release
         NO_DEFAULT_PATH REQUIRED)
 
-    # 2. generate the dispatch main.cpp.
-    #    The runner scans ./modules and writes ./generated/tests/, so it runs with
-    #    the source tree as its working directory.
+    get_property(mlw_modules      GLOBAL PROPERTY MLW_MODULES)
+    get_property(mlw_test_sources GLOBAL PROPERTY MLW_TEST_SOURCES)
+
+    # 2. generate the dispatch main.cpp at BUILD time.
+    #    Re-runs whenever the runner or any test source changes, so adding a
+    #    TEST() inside an existing file regenerates automatically.
     set(MLW_GEN_MAIN ${CMAKE_SOURCE_DIR}/generated/tests/main.cpp)
-    execute_process(
+    add_custom_command(
+        OUTPUT ${MLW_GEN_MAIN}
         COMMAND ${MLW_TEST_RUNNER}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        RESULT_VARIABLE _mlw_tr_run)
-    if(_mlw_tr_run)
-        message(FATAL_ERROR "test_runner failed to generate tests")
-    endif()
+        DEPENDS ${MLW_TEST_RUNNER} ${mlw_test_sources}
+        COMMENT "Generating test dispatch main.cpp"
+        VERBATIM)
+    set_source_files_properties(${MLW_GEN_MAIN} PROPERTIES GENERATED TRUE)
 
     # 3. assemble the test exe: generated main + every registered test source,
     #    linking every registered module (plus entry for the startup + mlwStart).
-    get_property(mlw_modules      GLOBAL PROPERTY MLW_MODULES)
-    get_property(mlw_test_sources GLOBAL PROPERTY MLW_TEST_SOURCES)
+
 
     add_executable(tests EXCLUDE_FROM_ALL
         ${MLW_GEN_MAIN}
         ${mlw_test_sources})
 
     target_link_libraries(tests PRIVATE entry ${mlw_modules})
+    set_target_properties(tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
 endif()

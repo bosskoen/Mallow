@@ -1,25 +1,17 @@
 @echo off
-cd /d %~dp0..
+setlocal
+cd /d "%~dp0.."
 
-echo [1/6] configuring test_runner...
-cmake -S tools/test_runner -B tools/test_runner/build -DCMAKE_BUILD_TYPE=Release
+set CONFIG=%1
+if "%CONFIG%"=="" set CONFIG=Release
+
+echo [1/3] configuring (tests on)...
+cmake -S . -B build
 if errorlevel 1 exit /b 1
 
-echo [2/6] building test_runner...
-cmake --build tools/test_runner/build --config Release
+echo [2/3] building tests (%CONFIG%)...
+cmake --build build --config %CONFIG% --target tests
 if errorlevel 1 exit /b 1
 
-echo [3/6] running test_runner...
-tools\test_runner\build\Release\test_runner.exe
-if errorlevel 1 exit /b 1
-
-echo [4/6] configuring generated tests...
-cmake -S generated/tests -B generated/tests/build
-if errorlevel 1 exit /b 1
-
-echo [5/6] building generated tests...
-cmake --build generated/tests/build --config Release
-if errorlevel 1 exit /b 1
-
-echo [6/6] running tests...
-generated\tests\build\Release\all_tests.exe
+echo [3/3] running tests...
+build\tests\%CONFIG%\tests.exe

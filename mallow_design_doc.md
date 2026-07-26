@@ -54,9 +54,6 @@ you need.
 
 The runner discovers `bool test_*()` and generates the dispatch main.cpp; the root build compiles it into the tests exe.
 - [ ] first real test under `core`, end to end
-- [ ] generation is configure-time (`execute_process`); move to a build-time
-      `add_custom_command` so it regenerates on test edits without the per-configure cost
-- [ ] rewrite the `.bat` files for the folded-in flow (`build --target tests`; drop the six-step version)
 - [ ] "run only these tests" — test selection / filtering
 
 
