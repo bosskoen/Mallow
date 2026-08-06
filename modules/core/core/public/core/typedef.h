@@ -84,7 +84,7 @@ namespace core
     template <typename T>
     struct NumericLimits
     {
-        static_assert(false, "type does not impment numaric_limits");
+        static_assert( sizeof(T) == 0, "type does not impment numaric_limits");
     };
 
     template <>
