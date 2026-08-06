@@ -45,7 +45,8 @@
 #define _MLW_WRITE_IMPL(handle, newline, format_str, ...)                                                     \
     do                                                                                                        \
     {                                                                                                         \
-        if constexpr ([](auto &&...args) consteval { return sizeof...(args); }(__VA_ARGS__) == 0 && !newline) \
+        constexpr bool _mlw_has_args = false __VA_OPT__(|| true);                                             \
+        if constexpr (!_mlw_has_args && !(newline))  \
         {                                                                                                     \
             io::writeHandle(handle, core::CStr(format_str));                                                  \
         }                                                                                                     \

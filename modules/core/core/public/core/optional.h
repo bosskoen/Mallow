@@ -252,7 +252,7 @@ namespace core
         }
 
         /// \brief Return the contained value, or panic with `msg` if empty.
-        T &expect(const char *msg)
+        T &expect(const CStr msg)
         {
             if (!has_value)
                 panic(msg);
@@ -260,7 +260,7 @@ namespace core
         }
 
         /// \copydoc expect()
-        const T &expect(const char *msg) const
+        const T &expect(const CStr msg) const
         {
             if (!has_value)
                 panic(msg);

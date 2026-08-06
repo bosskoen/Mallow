@@ -9,7 +9,8 @@
 ///
 /// `core::ThreadHandle<Fn>` spawns a thread running a closure and carries its
 /// return value back to the joiner. It is move-only, must be joined before
-/// destruction, and is single-use (spawn once, join once).
+/// destruction, and is reusable: the closure is kept, so once a run is joined
+/// the same handle can be spawned again.
 ///
 /// The `core::detail` declarations here are the CRT platform seam: their
 /// definitions live in the per-OS `thread.cpp` (Windows `CreateThread`, Linux
@@ -125,8 +126,12 @@ namespace core
     ///   (i.e. spawned but not yet joined) calls panic(). A moved-from handle
     ///   (`params == nullptr`) is the one state that destroys cleanly without a
     ///   join.
-    /// - **Single-use.** A handle spawns once and joins once; \ref join and a
-    ///   successful \ref tryJoin consume the result and mark the handle done.
+    /// - **Reusable.** The closure is retained across runs. After a run is
+    ///   joined (\ref join, or a successful \ref tryJoin) the OS handle is
+    ///   cleared and the same handle may be \ref spawn "spawned" again. \ref
+    ///   spawn only rejects (`DoubleStart`) while a thread is *currently*
+    ///   running; join consumes that run's result. A mutable closure keeps its
+    ///   captured state between runs, so successive runs can differ.
     ///
     /// \tparam Fn The callable to run on the new thread.
     /// \tparam R  Its return type, deduced as `invoke_result_t<Fn>`.
@@ -261,7 +266,8 @@ namespace core
         /// \brief Block until the thread finishes and return its value.
         ///
         /// Consumes the result: moves it out of the slot, destroys the husk, and
-        /// marks the handle done. Single-use — calling twice panics.
+        /// clears the OS handle. Calling join again without an intervening
+        /// \ref spawn panics; after a join the handle may be spawned afresh.
         ///
         /// \warning Panics if called on a moved-from handle, on a handle that was
         ///          never spawned or already joined, or (for non-void `R`) if the
@@ -313,7 +319,9 @@ namespace core
         auto tryJoin(uint32 ms){
             if constexpr (core::is_same_v<R, void>) {
                 if (!params || handle == nullptr) return true;   // nothing to wait on = "done"
-                return detail::try_join(handle, ms);
+                if (!detail::try_join(handle, ms)) return false; // timed out, still running
+                handle = nullptr;                                // reclaimed -> clear the handle
+                return true;
             }else{
                if (!params || handle == 0) return Optional<R>{}; 
                 if (!detail::try_join(handle, ms)) return Optional<R>{}; 

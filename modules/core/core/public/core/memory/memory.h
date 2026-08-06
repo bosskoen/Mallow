@@ -1,6 +1,6 @@
 #pragma once
-#include "compilers.h"
-#include "traits.h"
+#include "core/compilers.h"
+#include "core/traits.h"
 
 /// \file
 /// \brief Specialized instance allocators: Arena, Pool, and ObjectPool<T>.
@@ -10,16 +10,16 @@
 /// single OS reservation and hands out raw memory; object lifetime (running
 /// constructors and destructors) is always the caller's responsibility.
 ///
-/// - core::Arena � bump allocator; all allocations reclaimed at once by reset().
-/// - core::Pool  � fixed-block pool; blocks returned to the free list individually.
-/// - core::ObjectPool � typed wrapper over Pool that owns T objects (create/destroy).
+/// - core::Arena : bump allocator; all allocations reclaimed at once by reset().
+/// - core::Pool  : fixed-block pool; blocks returned to the free list individually.
+/// - core::ObjectPool : typed wrapper over Pool that owns T objects (create/destroy).
 
 namespace core
 {
     /// \brief Bump allocator over a single reservation: fast alloc, bulk free.
     ///
     /// Allocation just advances an offset, so it is extremely cheap. There is no
-    /// per-allocation free � memory is reclaimed in bulk by \ref reset, or back
+    /// per-allocation free, memory is reclaimed in bulk by \ref reset, or back
     /// to a saved point by \ref freeTo. This is the same discipline as a call
     /// stack: allocate downward-cheap, unwind all at once.
     ///
@@ -31,8 +31,8 @@ namespace core
     ///
     /// \warning Data only. \ref shutdown (and the destructor and move-assignment)
     ///          release the backing memory WITHOUT running any destructors for
-    ///          objects constructed in it. An Arena cannot run destructors � it
-    ///          frees in bulk and does not know what it holds � so only place
+    ///          objects constructed in it. An Arena cannot run destructors, it
+    ///          frees in bulk and does not know what it holds, so only place
     ///          trivially-destructible data here, or run destructors yourself
     ///          before reset/shutdown. For objects with destructors, use
     ///          \ref ObjectPool instead.
@@ -47,6 +47,10 @@ namespace core
         /// \brief Reserve `size` bytes (rounded up to a page). \return false on OOM
         ///        or if already initialized.
         bool init(usize size);
+
+        /// \brief Default-construct an empty, uninitialized Arena (call \ref init
+        ///        before use).
+        Arena() = default;
 
         /// \brief Release the reservation and reset to empty. Runs no destructors.
         void shutdown();
@@ -146,7 +150,7 @@ namespace core
     ///          link). You placement-new into it and call the destructor
     ///          yourself before \ref free. \ref shutdown releases the whole
     ///          reservation WITHOUT running destructors, and does not track which
-    ///          blocks are live � destroy your objects before shutdown.
+    ///          blocks are live, destroy your objects before shutdown.
     /// \note Not copyable; movable.
     struct Pool
     {
@@ -163,9 +167,13 @@ namespace core
         /// \return false on OOM, if already initialized, or if `size` is smaller
         ///         than one block.
         /// \note Up to `block_size - 1` bytes at the tail are unused when capacity
-        ///       is not an exact multiple of the block size � intentional, so no
+        ///       is not an exact multiple of the block size, intentional, so no
         ///       short block is ever handed out.
         bool init(usize size, usize b_size);
+
+        /// \brief Default-construct an empty, uninitialized Pool (call \ref init
+        ///        before use).
+        Pool() = default;
 
         /// \brief Release the reservation and reset to empty. Runs no destructors.
         void shutdown();
@@ -189,7 +197,7 @@ namespace core
         };
 
         /// \brief Move-assign. Releases our current reservation first (no
-        ///        destructors run � see the type warning), then takes `other`'s.
+        ///        destructors run, see the type warning), then takes `other`'s.
         Pool& operator=(Pool&& other) noexcept
         {
             if (this != &other)
@@ -237,14 +245,14 @@ namespace core
     /// Bakes `sizeof(T)`/`alignof(T)` into the underlying pool and pairs
     /// allocation with construction (\ref create) and freeing with destruction
     /// (\ref destroy), so callers deal in objects rather than raw slots. This is
-    /// the object-owning counterpart to the raw \ref Pool � and note there is
+    /// the object-owning counterpart to the raw \ref Pool, and note there is
     /// deliberately no "ObjectArena": an arena frees in bulk and cannot run
     /// destructors, so only a pool (which frees per block) can own objects.
     ///
     /// \warning destroy() runs the destructor, but teardown does not. Destroying an
     ///          ObjectPool, or move-assigning into an already-initialized one,
     ///          releases that pool's memory WITHOUT running destructors for blocks
-    ///          still live in it � the pool can't tell which slots are occupied.
+    ///          still live in it, the pool can't tell which slots are occupied.
     ///          Destroy live objects before a pool is torn down or overwritten.
     ///
     /// \tparam T The object type this pool allocates.

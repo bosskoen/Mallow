@@ -250,14 +250,18 @@ namespace core
             requires(is_invocable_v<F, Ts &> && ...)
         void visit(F &&f)
         {
+            static_assert((is_invocable_v<F, Ts &> && ...),
+                  "Variant::visit(f): the visitor must accept every alternative by mutable reference (T&).");
             run(*this, static_cast<F &&>(f));
         }
 
         /// \brief Const overload of visit(); \p f receives each alternative as `const T&`.
         template <typename F>
-            requires(is_invocable_v<F, const Ts &> && ...)
+            requires(is_invocable_v<F, /*const*/ Ts &> && ...)
         void visit(F &&f) const
         {
+            static_assert((is_invocable_v<F, const Ts &> && ...),
+                  "Variant::visit(f): the visitor must accept every alternative by mutable reference (T&).");
             run(*this, static_cast<F &&>(f));
         }
 

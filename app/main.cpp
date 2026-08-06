@@ -208,6 +208,8 @@ static void t10_destroy_joinable_panics() {
 }
 #endif
 
+#include <core/variant.h>
+
 int32 mallowMain() {
     f64 x = core::mlwExp10(10.);
     println("pagesize = {}", x);
@@ -227,5 +229,13 @@ int32 mallowMain() {
     return 1;
 #endif
     println("ALL THREAD TESTS PASSED");
+
+    core::Optional<int> opt{1};
+    opt.expect("some mesage");
+
+    uint value;
+
+    const core::Variant<uint, f32> var{12U};
+    var.visit([& value] (auto& y) -> void {y+=1;});
     return 0;
 }
