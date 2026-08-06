@@ -235,7 +235,7 @@ int32 mallowMain() {
 
     uint value;
 
-    const core::Variant<uint, f32> var{12U};
+    core::Variant<uint, f32> var{12U};
     var.visit([& value] (auto& y) -> void {y+=1;});
     return 0;
 }

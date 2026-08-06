@@ -37,7 +37,7 @@ MLW_NO_RETURN void core::mlwExit(int32 status)
 #if !defined(MLW_ABI_MSVC)
     crt::run_thread_local_dtors();
     crt::run_global_dtors();
-    core::ThreadCache::mlw__crt_distroy_tc_storage();
+    core::detail::ThreadCache::mlw__crt_distroy_tc_storage();
     core::detail::mlw__crt_distroy_format_buffer();
 #endif
 
