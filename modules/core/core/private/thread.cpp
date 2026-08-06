@@ -23,7 +23,7 @@
 DWORD WINAPI threadEntry(LPVOID s)
 {
 #ifndef MLW_ABI_MSVC
-    core::ThreadCache::mlw__first_crt_ctor();
+    core::detail::ThreadCache::mlw__first_crt_ctor();
     crt::run_thread_local_ctors(); // no real definition just symitry
 #endif
     core::detail::ThreadStart *start = static_cast<core::detail::ThreadStart *>(s);
@@ -33,7 +33,7 @@ DWORD WINAPI threadEntry(LPVOID s)
 
 #ifndef MLW_ABI_MSVC
     crt::run_thread_local_dtors();
-    core::ThreadCache::mlw__crt_distroy_tc_storage();
+    core::detail::ThreadCache::mlw__crt_distroy_tc_storage();
     core::detail::mlw__crt_distroy_format_buffer();
 #endif
     return 0;
@@ -128,7 +128,7 @@ int threadEntry(void *s)
     usize tls_size;
     void *tls_base = mlw_setup_main_tls(tls_size, core::PLATFORM_INFO.page_size);
 
-    core::ThreadCache::mlw__first_crt_ctor(); // the load-bearing one: per-thread allocator caches
+    core::detail::ThreadCache::mlw__first_crt_ctor(); // the load-bearing one: per-thread allocator caches
     crt::run_thread_local_ctors();            // no-op on Itanium, kept for symmetry
 
     auto *start = static_cast<core::detail::ThreadStart *>(s);
@@ -136,7 +136,7 @@ int threadEntry(void *s)
     core::mlwFree(start); // child owns ThreadStart, same as Windows
 
     crt::run_thread_local_dtors();
-    core::ThreadCache::mlw__crt_distroy_tc_storage();
+    core::detail::ThreadCache::mlw__crt_distroy_tc_storage();
     core::detail::mlw__crt_distroy_format_buffer();
 
     // Tear down our own TLS. The mmap'd *stack* is NOT freed here — the thread
