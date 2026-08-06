@@ -3,6 +3,7 @@
 #include "core/traits.h"
 #include "core/libc/mem.h"
 #include "core/result.h"
+#include "core/optional.h"
 
 /// \file
 /// \brief Owning handle to an OS thread, with typed return-value passing.

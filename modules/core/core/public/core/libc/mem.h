@@ -1,6 +1,6 @@
 #pragma once
-
-#include "../memory/galloc.h"
+#include "../typedef.h"
+//#include "../memory/galloc.h"
 
 /// \file
 /// \brief Freestanding libc runtime (mem*/strlen) and global-allocator wrappers.
