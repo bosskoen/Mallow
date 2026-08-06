@@ -444,7 +444,7 @@ void core::GAlloc::freeMediumRegion(core::detail::Region *region)
 #if defined(MLW_WINDOWS)
 	::VirtualFree(region, 0, MEM_RELEASE);
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-	::munmap(region, Region::MEDIUM_BLOCK_SIZE);
+	::munmap(region, detail::Region::MEDIUM_BLOCK_SIZE);
 #endif
 }
 
