@@ -1,5 +1,6 @@
 #include <core/thread/thread.h>
 
+#include <core/memory/anonymous_allocator.h>
 
 
 // thread_tests.cpp verification suite for core::ThreadHandle.
@@ -211,8 +212,9 @@ static void t10_destroy_joinable_panics() {
 #include <core/variant.h>
 
 int32 mallowMain() {
-    f64 x = core::mlwExp10(10.);
-    println("pagesize = {}", x);
+    const f64 x = core::mlwExp10(10.);
+    println("pagesize = {}", static_cast<uint64>(x));
+    println("pagesize = {}", core::NumericLimits<uint32>::max);
 
     t1_void();               println("T1  void .................. ok");
     t2_int();                println("T2  int return ............ ok");
@@ -237,5 +239,6 @@ int32 mallowMain() {
 
     core::Variant<uint, f32> var{12U};
     var.visit([& value] (auto& y) -> void {y+=1;});
+    core::default_allocator();
     return 0;
 }

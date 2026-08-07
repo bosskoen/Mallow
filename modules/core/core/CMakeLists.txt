@@ -71,6 +71,8 @@ target_sources(core
         private/math/expf.cpp
         private/math/powf.cpp
         private/math/pow.cpp
+        private/anonymous_allocator.cpp
+        public/core/memory/anonymous_allocator.h
 )
 
 if(MLW_ABI_MSVC)

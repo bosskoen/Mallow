@@ -1030,7 +1030,7 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 		if (new_size <= old_size)
 			return ptr;
 
-		void *fresh = alignAlloc(new_size, 8);
+		void *fresh = alignAlloc(new_size, old_size);
 		if (!fresh)
 			return nullptr;
 		mlwMemcpy(fresh, ptr, old_size);

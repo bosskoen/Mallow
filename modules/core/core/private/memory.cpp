@@ -64,7 +64,7 @@ bool core::Arena::init(usize size)
 
 void core::Arena::shutdown()
 {
-	// Releases the reservation only — no destructors (see the Arena warning).
+	// Releases the reservation only ï¿½ no destructors (see the Arena warning).
 	if (base)
 	{
 #if defined(MLW_WINDOWS)
@@ -147,7 +147,7 @@ bool core::Pool::init(usize size, usize b_size)
 
 	// Thread the free list through every *whole* block. block_count comes from
 	// integer division, so a final partial block (when capacity isn't a multiple
-	// of block_size) is simply never linked — dead tail space rather than a
+	// of block_size) is simply never linked ï¿½ dead tail space rather than a
 	// short block that would overrun on use. Loop stops one early and terminates
 	// the last real block with null.
 	first_free = base;
@@ -166,7 +166,7 @@ bool core::Pool::init(usize size, usize b_size)
 
 void core::Pool::shutdown()
 {
-	// Releases the reservation only — does not run destructors and does not know
+	// Releases the reservation only ï¿½ does not run destructors and does not know
 	// which blocks are live (see the Pool warning).
 	if (base)
 	{
@@ -181,3 +181,4 @@ void core::Pool::shutdown()
 	block_size = 0;
 	first_free = nullptr;
 }
+
