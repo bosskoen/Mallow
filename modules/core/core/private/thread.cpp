@@ -152,6 +152,7 @@ int threadEntry(void *s)
 uint32 core::detail::sys_spawn(void* &h, ThreadStart *s)
 {
     LinuxThreadState *st = static_cast<LinuxThreadState *>(mlwMalloc(sizeof(LinuxThreadState)));
+    st->tid = 0;
 
     st->stack_size = DEFAULT_STACK;
     // NOTE: mmap result isn't checked; a MAP_FAILED here yields a bad stack_top

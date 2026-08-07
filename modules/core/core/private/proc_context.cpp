@@ -61,7 +61,7 @@ core::SysInfo core::ProcContext::getSysInfo(){
     if (r < 0) {count= 1; }     
     else{            // fallback: assume 1 core
     // r = number of BYTES written; popcount those bytes
-    uint32 count = 0;
+    count = 0;
     unsigned long words = (unsigned long)r / sizeof(unsigned long);
     for (unsigned long i = 0; i < words; ++i)
         count += (uint32)__builtin_popcountl(mask[i]);   // __builtin_popcountl

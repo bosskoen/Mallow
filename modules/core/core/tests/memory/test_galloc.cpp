@@ -17,6 +17,7 @@
 // dropped: there is no libc malloc to compare against in this tree.
 
 #include "core/memory/galloc.h"
+#include "core/libc/mem.h"
 #include "core/thread/thread.h"
 #include "core/thread/atomic.h"
 #include "core/optional.h"
@@ -292,14 +293,15 @@ bool test_alignment() {
 
 // Page-aligned allocation should go through the OS path.
 bool test_alignment_page() {
-	void* p = mlw_g_alloc.alignAlloc(4096, 4096);
+	usize ps = core::PLATFORM_INFO.page_size;
+	void* p = mlw_g_alloc.alignAlloc(ps, ps);
 	if (!p) return false;
-	if (!is_aligned(p, 4096)) {
+	if (!is_aligned(p, ps)) {
 		mlw_g_alloc.free(p);
 		return false;
 	}
-	fill(p, 4096, 0x77);
-	bool ok = verify(p, 4096, 0x77);
+	fill(p, ps, 0x77);
+	bool ok = verify(p, ps, 0x77);
 	mlw_g_alloc.free(p);
 	return ok;
 }

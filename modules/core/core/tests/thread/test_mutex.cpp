@@ -174,8 +174,8 @@ namespace core_core_test
             {
                 Lock<Mutex> g{m};
                 go = true;
+                cv.wakeAll();
             }
-            cv.wakeAll();
 
             for (int32 i = 0; i < K; ++i)
                 hs[i].unwrap().join();

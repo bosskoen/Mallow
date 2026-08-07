@@ -53,7 +53,6 @@ you need.
 ## Test system  *(current focus)*
 
 The runner discovers `bool test_*()` and generates the dispatch main.cpp; the root build compiles it into the tests exe.
-- [ ] first real test under `core`, end to end
 - [ ] "run only these tests" — test selection / filtering
 
 
