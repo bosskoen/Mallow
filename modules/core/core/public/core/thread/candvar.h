@@ -39,9 +39,10 @@ namespace core::sync
             requires is_invocable_v<F> && is_same_v<invoke_result_t<F>, bool>
         void wait(Lock<Mutex> &lock, F &&fn)
         {
-            while (!fn())
+            while (true)
             {
                 uint32 val = lock_value.load(MemoryOrder::Acquire);
+                if (fn()) return;
                 lock.unlock();
                 detail::mlwFutexWait(lock_value.rawPtrUnsafe(), val);
                 lock.relock();

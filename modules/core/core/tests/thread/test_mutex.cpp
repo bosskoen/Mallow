@@ -28,13 +28,20 @@ namespace
     bool runOnThreads(int32 K, Body body)
     {
         constexpr int32 MAXK = 8;
-        if (K > MAXK) return false;
-        auto make = [&](int32 id) { return [body, id] { body(id); return 0; }; };
+        if (K > MAXK)
+            return false;
+        auto make = [&](int32 id)
+        { return [body, id]
+          { body(id); return 0; }; };
         using Fn = decltype(make(0));
         Optional<ThreadHandle<Fn>> hs[MAXK];
-        for (int32 i = 0; i < K; ++i) hs[i].emplace(make(i));
-        for (int32 i = 0; i < K; ++i) if (hs[i].unwrap().spawn().isErr()) return false;
-        for (int32 i = 0; i < K; ++i) hs[i].unwrap().join();
+        for (int32 i = 0; i < K; ++i)
+            hs[i].emplace(make(i));
+        for (int32 i = 0; i < K; ++i)
+            if (hs[i].unwrap().spawn().isErr())
+                return false;
+        for (int32 i = 0; i < K; ++i)
+            hs[i].unwrap().join();
         return true;
     }
 }
@@ -47,12 +54,15 @@ namespace core_core_test
     bool test_mutex_basic()
     {
         Mutex m;
-        if (!m.tryLock()) return false;      // free -> acquired
-        if (m.tryLock()) return false;       // held -> refused (non-recursive)
+        if (!m.tryLock())
+            return false; // free -> acquired
+        if (m.tryLock())
+            return false; // held -> refused (non-recursive)
         m.unlock();
-        if (!m.tryLock()) return false;      // free again
+        if (!m.tryLock())
+            return false; // free again
         m.unlock();
-        m.lock();                            // blocking acquire on a free mutex
+        m.lock(); // blocking acquire on a free mutex
         m.unlock();
         return true;
     }
@@ -65,14 +75,18 @@ namespace core_core_test
         Mutex m;
         {
             Lock<Mutex> g{m};
-            if (!g.isHeld()) return false;
-            if (m.tryLock()) return false;   // guard holds it
+            if (!g.isHeld())
+                return false;
+            if (m.tryLock())
+                return false; // guard holds it
             g.unlock();
-            if (!m.tryLock()) return false;  // free while released
+            if (!m.tryLock())
+                return false; // free while released
             m.unlock();
             g.relock();
         }
-        if (!m.tryLock()) return false;      // free after guard destroyed
+        if (!m.tryLock())
+            return false; // free after guard destroyed
         m.unlock();
         return true;
     }
@@ -84,10 +98,10 @@ namespace core_core_test
     {
         constexpr int32 K = 4, N = 5000;
         Mutex m;
-        int32 counter = 0;                   // PLAIN int: only the mutex protects it
-        bool ok = runOnThreads(K, [&m, &counter](int32) {
-            for (int32 i = 0; i < N; ++i) { Lock<Mutex> g{m}; ++counter; }
-        });
+        int32 counter = 0; // PLAIN int: only the mutex protects it
+        bool ok = runOnThreads(K, [&m, &counter](int32)
+                               {
+            for (int32 i = 0; i < N; ++i) { Lock<Mutex> g{m}; ++counter; } });
         return ok && counter == K * N;
     }
 
@@ -102,13 +116,16 @@ namespace core_core_test
         int32 data = 0;
 
         // Consumer waits for `ready`, then returns the value it observed.
-        auto consumer = [&m, &cv, &ready, &data]() -> int32 {
+        auto consumer = [&m, &cv, &ready, &data]() -> int32
+        {
             Lock<Mutex> g{m};
-            cv.wait(g, [&ready] { return ready; });   // re-checks predicate under lock
-            return data;                              // lock held here; safe to read
+            cv.wait(g, [&ready]
+                    { return ready; }); // re-checks predicate under lock
+            return data;                // lock held here; safe to read
         };
         ThreadHandle<decltype(consumer)> h{decltype(consumer)(consumer)};
-        if (h.spawn().isErr()) return false;
+        if (h.spawn().isErr())
+            return false;
 
         // Producer: publish under the lock, then wake.
         {
@@ -127,27 +144,43 @@ namespace core_core_test
     // =======================================================================
     bool test_condvar_wake_all()
     {
-        Mutex m;
-        CondVar cv;
-        bool go = false;
-        Atomic<int32> woke{0};
+        bool sucses = true;
+        for (int z = 0; z < 50; ++z)
+        {
+            Mutex m;
+            CondVar cv;
+            bool go = false;
+            Atomic<int32> woke{0};
 
-        constexpr int32 K = 3;
-        auto waiter = [&m, &cv, &go, &woke](int32) {
-            Lock<Mutex> g{m};
-            cv.wait(g, [&go] { return go; });
-            woke.fetchAdd(1, MemoryOrder::AcqRel);
-        };
-        auto make = [&](int32 id) { return [waiter, id] { waiter(id); return 0; }; };
-        using Fn = decltype(make(0));
-        Optional<ThreadHandle<Fn>> hs[K];
-        for (int32 i = 0; i < K; ++i) hs[i].emplace(make(i));
-        for (int32 i = 0; i < K; ++i) if (hs[i].unwrap().spawn().isErr()) return false;
+            constexpr int32 K = 3;
+            auto waiter = [&m, &cv, &go, &woke](int32)
+            {
+                Lock<Mutex> g{m};
+                cv.wait(g, [&go]
+                        { return go; });
+                woke.fetchAdd(1, MemoryOrder::AcqRel);
+            };
+            auto make = [&](int32 id)
+            { return [waiter, id]
+              { waiter(id); return 0; }; };
+            using Fn = decltype(make(0));
+            Optional<ThreadHandle<Fn>> hs[K];
+            for (int32 i = 0; i < K; ++i)
+                hs[i].emplace(make(i));
+            for (int32 i = 0; i < K; ++i)
+                if (hs[i].unwrap().spawn().isErr())
+                    return false;
 
-        { Lock<Mutex> g{m}; go = true; }
-        cv.wakeAll();
+            {
+                Lock<Mutex> g{m};
+                go = true;
+            }
+            cv.wakeAll();
 
-        for (int32 i = 0; i < K; ++i) hs[i].unwrap().join();
-        return woke.load() == K;
+            for (int32 i = 0; i < K; ++i)
+                hs[i].unwrap().join();
+            if (woke.load() != K) sucses = false;
+        }
+        return sucses;
     }
 }

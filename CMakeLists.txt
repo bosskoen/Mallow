@@ -154,4 +154,5 @@ if(MLW_BUILD_TESTS)
     target_link_libraries(tests PRIVATE entry ${mlw_modules})
     set_target_properties(tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
+    #target_compile_options(tests PRIVATE -O0 -g)
 endif()
