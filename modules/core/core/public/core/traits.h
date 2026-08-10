@@ -9,9 +9,14 @@ namespace core
     /// \brief A type list is a compile-time list of types. It can be used to store a list of types and perform operations on them at compile time.
     template <typename... Ts> struct type_list{};
 
+    struct true_type { static constexpr bool value = true; };
+    struct false_type { static constexpr bool value = false; };
+
+    template <typename...> using void_t = void;
+
     // ----- is_same -----
-    template <typename A, typename B> struct is_same{ static constexpr bool value = false; };
-    template <typename A> struct is_same<A, A> { static constexpr bool value = true; };
+    template <typename A, typename B> struct is_same : false_type {};
+    template <typename A> struct is_same<A, A> : true_type {};
 
     template <typename A, typename B> 
     constexpr bool is_same_v = is_same<A, B>::value;
@@ -147,6 +152,15 @@ namespace core
     template <typename T>
     constexpr bool is_move_assignable_v = is_move_assignable<T>::value;
 
+    template <typename T> struct is_destructible { static constexpr bool value = __is_destructible(T);};
+    template <typename T>
+    constexpr bool is_destructible_v = is_destructible<T>::value;
+
+    template <typename T> struct is_trivially_destructible { static constexpr bool value = __is_trivially_destructible(T); };
+    template <typename T>
+    constexpr bool is_trivially_destructible_v = is_trivially_destructible<T>::value;
+
+
     // is_invocable — can F be called with Args...
 
     /// \brief Adds an rvalue reference to a type.
@@ -215,6 +229,16 @@ namespace core
     constexpr remove_ref_t<T> &&move(T &&t) noexcept
     {
         return static_cast<remove_ref_t<T> &&>(t);
+    }
+
+    // returns an rvalue ref if movable, else a const lvalue ref — the right thing to
+    // feed placement-new / a constructor so it selects move or copy automatically.
+    template <typename U>
+    constexpr decltype(auto) move_if_movable(U& x) {
+        if constexpr (is_move_constructible_v<U>)
+            return core::move(x);        // U&&  -> move ctor selected
+        else
+            return static_cast<const U&>(x);  // const U& -> copy ctor selected
     }
 
     template <typename T>

@@ -1,5 +1,4 @@
-#include "core/traits.h"
-using namespace core;
+
 namespace core_core_test
 {
     bool test_test(){

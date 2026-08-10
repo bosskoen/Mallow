@@ -8,30 +8,33 @@
 #include "posix/syscall_api.h"
 #endif
 
-
-namespace core::detail {
+namespace core::detail
+{
 	alignas(ThreadCache) static thread_local uint8 tc_storage[sizeof(ThreadCache)]{0};
-	static thread_local bool tc_constructed  = false; 
+	static thread_local bool tc_constructed = false;
 
-	static ThreadCache& getThreadCache() { return *reinterpret_cast<ThreadCache*>(tc_storage); }
+	MLW_FORCE_INLINE static ThreadCache &getThreadCache() { return *reinterpret_cast<ThreadCache *>(tc_storage); }
 
 }
 
 namespace core
 {
 	alignas(GAlloc) static uint8 g_alloc_storage[sizeof(GAlloc)];
-	GAlloc& mlw_g_alloc = *reinterpret_cast<GAlloc*>(g_alloc_storage);
+	GAlloc &mlw_g_alloc = *reinterpret_cast<GAlloc *>(g_alloc_storage);
 } // namespace core
 
-void core::detail::ThreadCache::mlw__crt_distroy_tc_storage(){
-	if (tc_constructed) {
-	getThreadCache().~ThreadCache();
-	tc_constructed = false;
+void core::detail::ThreadCache::mlw__crt_distroy_tc_storage()
+{
+	if (tc_constructed)
+	{
+		getThreadCache().~ThreadCache();
+		tc_constructed = false;
 	}
 }
 void core::detail::ThreadCache::mlw__first_crt_ctor()
 {
-	if (!tc_constructed){
+	if (!tc_constructed)
+	{
 		new (tc_storage) ThreadCache{};
 		tc_constructed = true;
 	}
@@ -128,7 +131,8 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 		void *block = reinterpret_cast<void *>(current->free_block);
 		current->free_block = *reinterpret_cast<detail::Header **>(block);
 
-		if (current->used_count == 0) --sc.free_slabs;
+		if (current->used_count == 0)
+			--sc.free_slabs;
 		++current->used_count;
 		return block;
 	}
@@ -201,15 +205,15 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 		detail::Header *middle_h = reinterpret_cast<detail::Header *>(aligned_payload + size);
 		detail::Header *next_h = reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(block) + block->next_off);
 		detail::Header *prev_h = block->pre_off != 0
-							 ? reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(block) - block->pre_off)
-							 : nullptr;
+									 ? reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(block) - block->pre_off)
+									 : nullptr;
 
 		detail::Header *prev_f = block->getFreePtr()->prev_free_block;
 		detail::Header *next_f = block->getFreePtr()->next_free_block;
 
 		usize padding = (new_header > block)
-			? static_cast<usize>(reinterpret_cast<char*>(new_header) - reinterpret_cast<char*>(block + 1))
-			: 0;
+							? static_cast<usize>(reinterpret_cast<char *>(new_header) - reinterpret_cast<char *>(block + 1))
+							: 0;
 		usize after_padding = reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(middle_h);
 
 		bool keep_front = padding > MIN_SIZE + sizeof(detail::Header);
@@ -312,7 +316,8 @@ void *core::GAlloc::alignAlloc(usize size, usize align)
 				next_h->pre_off = new_to_next;
 			new_header->align = align;
 		}
-		if (current->used_count == 0) --cache.medium.free_slabs;
+		if (current->used_count == 0)
+			--cache.medium.free_slabs;
 		++current->used_count;
 		return reinterpret_cast<void *>(new_header + 1);
 	}
@@ -350,7 +355,8 @@ bool core::GAlloc::allocMediumRegion(core::detail::Region *last_region, core::de
 				last_region->next = r;
 				r->previous = last_region;
 			}
-			if (r->used_count == 0) {
+			if (r->used_count == 0)
+			{
 				--sc.free_slabs;
 				++cache.getSizeClass(detail::RegionTable::Entry::Type::Medium).free_slabs;
 			}
@@ -467,8 +473,8 @@ bool core::GAlloc::freeMedium(void *ptr, core::detail::Region *region)
 						  reinterpret_cast<char *>(next_header) - reinterpret_cast<char *>(region)) >= detail::Region::MEDIUM_BLOCK_SIZE;
 
 	detail::Header *prev_header = header->pre_off != 0
-							  ? reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(header) - header->pre_off)
-							  : nullptr;
+									  ? reinterpret_cast<detail::Header *>(reinterpret_cast<char *>(header) - header->pre_off)
+									  : nullptr;
 
 	bool merged_backward = false;
 
@@ -656,7 +662,8 @@ bool core::GAlloc::allocSmallRegion(core::detail::Region *last_region, core::det
 				last_region->next = r;
 				r->previous = last_region;
 			}
-			if (r->used_count == 0) {
+			if (r->used_count == 0)
+			{
 				--sc.free_slabs;
 				++cache.getSizeClass(size).free_slabs;
 			}
@@ -1042,8 +1049,81 @@ void *core::GAlloc::realloc(void *ptr, usize new_size)
 	detail::Header *header = static_cast<detail::Header *>(ptr) - 1;
 	usize old_usable = header->next_off - sizeof(detail::Header);
 
+	new_size = core::mlwMax(MIN_SIZE, new_size);
+
+	// --- medium shrink: carve the freed tail into a free block, in place ---
 	if (new_size <= old_usable)
+	{
+		// touching the region free list requires owning it; ptr never moves either way
+		if (entry.ptr->owning_cache != &cache)
+			return ptr;
+
+
+		detail::Region *region = entry.ptr;
+		const usize want_off = new_size + sizeof(detail::Header);
+
+		detail::Header *next_h = reinterpret_cast<detail::Header *>(
+			reinterpret_cast<char *>(header) + header->next_off);
+		bool next_is_last = static_cast<usize>(
+								reinterpret_cast<char *>(next_h) - reinterpret_cast<char *>(region)) >= detail::Region::MEDIUM_BLOCK_SIZE;
+		bool next_free = !next_is_last && next_h->align == 0;
+
+		// end of the free region we can form, and the header that follows it
+		detail::Header *after;
+		bool after_is_last;
+		if (next_free)
+		{
+			after = reinterpret_cast<detail::Header *>(
+				reinterpret_cast<char *>(next_h) + next_h->next_off);
+			after_is_last = static_cast<usize>(
+								reinterpret_cast<char *>(after) - reinterpret_cast<char *>(region)) >= detail::Region::MEDIUM_BLOCK_SIZE;
+		}
+		else
+		{
+			after = next_h;
+			after_is_last = next_is_last;
+		}
+
+		const usize free_total = static_cast<usize>(
+			reinterpret_cast<char *>(after) - (reinterpret_cast<char *>(header) + want_off));
+
+		// only worth carving if the result clears the floor; else keep the slack
+		if (free_total < MIN_SIZE + sizeof(detail::Header))
+			return ptr;
+
+		// absorbing the next free block? unlink it first
+		if (next_free)
+		{
+			detail::Header *nf = next_h->getFreePtr()->next_free_block;
+			detail::Header *pf = next_h->getFreePtr()->prev_free_block;
+			if (pf)
+				pf->getFreePtr()->next_free_block = nf;
+			else
+				region->free_block = nf;
+			if (nf)
+				nf->getFreePtr()->prev_free_block = pf;
+		}
+
+		// shrink our block, build the tail free block
+		header->next_off = want_off;
+
+		detail::Header *f = reinterpret_cast<detail::Header *>(
+			reinterpret_cast<char *>(header) + want_off);
+		f->pre_off = want_off;
+		f->next_off = static_cast<usize>(reinterpret_cast<char *>(after) - reinterpret_cast<char *>(f));
+		f->align = 0;
+		if (!after_is_last)
+			after->pre_off = f->next_off;
+
+		// push onto free-list head (same idiom as the grow split)
+		f->getFreePtr()->prev_free_block = nullptr;
+		f->getFreePtr()->next_free_block = region->free_block;
+		if (region->free_block)
+			region->free_block->getFreePtr()->prev_free_block = f;
+		region->free_block = f;
+
 		return ptr;
+	}
 
 	// skip in-place attempt if cross-thread or result would exceed medium range
 	if (new_size >= MAX_SIZE || entry.ptr->owning_cache != &cache)

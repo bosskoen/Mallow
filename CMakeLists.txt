@@ -76,6 +76,7 @@ option(MLW_BUILD_TESTS "Build the test harness" ON)
 
 
 add_subdirectory(modules/core/core)
+add_subdirectory(modules/core/stl)
 
 #add new moduals here
 

@@ -4,6 +4,7 @@ add_library(core STATIC)
 add_library(core::core ALIAS core)
 
 if(WIN32)
+# needed for mutex
     target_link_libraries(core PRIVATE synchronization)
 endif()
 
