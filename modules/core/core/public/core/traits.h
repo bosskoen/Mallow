@@ -1,6 +1,10 @@
 #pragma once
 #include "typedef.h"
 
+#ifndef __has_builtin
+#  define __has_builtin(x) 0   // assume absent; force the library fallback
+#endif
+
 /// \file
 /// \brief all basic trait defenitions
 
@@ -152,14 +156,32 @@ namespace core
     template <typename T>
     constexpr bool is_move_assignable_v = is_move_assignable<T>::value;
 
-    template <typename T> struct is_destructible { static constexpr bool value = __is_destructible(T);};
+    template <typename T, typename = void>
+    struct is_destructible : false_type {};
+    template <typename T>
+    struct is_destructible<T, void_t<decltype(declval<T&>().~T())>> : true_type {};
+
+    // references are always destructible (no-op), arrays follow element type,
+    // void / function types are not. Add these specializations if you need them:
+    template <typename T> struct is_destructible<T&>  : true_type {};
+    template <typename T> struct is_destructible<T&&> : true_type {};
     template <typename T>
     constexpr bool is_destructible_v = is_destructible<T>::value;
 
-    template <typename T> struct is_trivially_destructible { static constexpr bool value = __is_trivially_destructible(T); };
+
+#if defined(MLW_MSVC) || __has_builtin(__is_trivially_destructible)
+    template <typename T> struct is_trivially_destructible {
+        static constexpr bool value = __is_trivially_destructible(T);
+    };
+#else
+    // GCC fallback: destructible AND has a trivial destructor
+    template <typename T> struct is_trivially_destructible {
+        static constexpr bool value =
+            is_destructible<T>::value && __has_trivial_destructor(T);
+    };
+#endif
     template <typename T>
     constexpr bool is_trivially_destructible_v = is_trivially_destructible<T>::value;
-
 
     // is_invocable — can F be called with Args...
 
