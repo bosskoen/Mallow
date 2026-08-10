@@ -18,6 +18,11 @@ namespace core
 
     template <typename...> using void_t = void;
 
+    /// \brief Provides an rvalue reference to T in unevaluated contexts.
+    /// \note This function is declared only for type trait use and is never defined.
+    template <typename T>
+    typename add_rvalue_reference<T>::type declval() noexcept;
+
     // ----- is_same -----
     template <typename A, typename B> struct is_same : false_type {};
     template <typename A> struct is_same<A, A> : true_type {};
@@ -196,10 +201,6 @@ namespace core
     template <typename T>
     using add_rvalue_reference_t = typename add_rvalue_reference<T>::type;
 
-    /// \brief Provides an rvalue reference to T in unevaluated contexts.
-    /// \note This function is declared only for type trait use and is never defined.
-    template <typename T>
-    typename add_rvalue_reference<T>::type declval() noexcept;
 
     /// \brief Checks whether a callable object F can be invoked with argument types Args.
     template <typename F, typename... Args>
