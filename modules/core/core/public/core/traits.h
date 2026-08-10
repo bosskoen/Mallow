@@ -18,6 +18,17 @@ namespace core
 
     template <typename...> using void_t = void;
 
+    /// \brief Adds an rvalue reference to a type.
+    /// \tparam T Type to transform.
+    template <typename T> struct add_rvalue_reference { using type = T &&; };
+    template <> struct add_rvalue_reference<void> { using type = void; };
+    template <> struct add_rvalue_reference<const void> {using type = const void; };
+    template <> struct add_rvalue_reference<volatile void> { using type = volatile void; };
+    template <> struct add_rvalue_reference<const volatile void> { using type = const volatile void; };
+
+    template <typename T>
+    using add_rvalue_reference_t = typename add_rvalue_reference<T>::type;
+
     /// \brief Provides an rvalue reference to T in unevaluated contexts.
     /// \note This function is declared only for type trait use and is never defined.
     template <typename T>
@@ -189,18 +200,6 @@ namespace core
     constexpr bool is_trivially_destructible_v = is_trivially_destructible<T>::value;
 
     // is_invocable — can F be called with Args...
-
-    /// \brief Adds an rvalue reference to a type.
-    /// \tparam T Type to transform.
-    template <typename T> struct add_rvalue_reference { using type = T &&; };
-    template <> struct add_rvalue_reference<void> { using type = void; };
-    template <> struct add_rvalue_reference<const void> {using type = const void; };
-    template <> struct add_rvalue_reference<volatile void> { using type = volatile void; };
-    template <> struct add_rvalue_reference<const volatile void> { using type = const volatile void; };
-
-    template <typename T>
-    using add_rvalue_reference_t = typename add_rvalue_reference<T>::type;
-
 
     /// \brief Checks whether a callable object F can be invoked with argument types Args.
     template <typename F, typename... Args>
