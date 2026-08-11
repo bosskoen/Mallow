@@ -16,6 +16,11 @@ namespace core
     struct true_type { static constexpr bool value = true; };
     struct false_type { static constexpr bool value = false; };
 
+    /// \brief A utility alias that collapses types into void
+    ///
+    /// Used in SFINAE contexts to convert valid expressions into void.
+    /// This enables compile-time type checking by allowing substitution failure 
+    /// to be caught and handled gracefully.
     template <typename...> using void_t = void;
 
     /// \brief Adds an rvalue reference to a type.

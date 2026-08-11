@@ -2,6 +2,7 @@ build/
 generated/
 html/
 latex/
+docs/
 
 
 # --- CMake in-source pollution (in case a stray `cmake .` happens again) ---

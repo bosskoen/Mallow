@@ -53,7 +53,7 @@ namespace core
 	template <VectorElement T>
 	class Vector
 	{
-		T* data;
+		T *data;
 		isize length;
 		isize cap;
 		AnonymousAllocator allocator;
@@ -70,24 +70,24 @@ namespace core
 			if constexpr (is_trivially_copyable_v<T>)
 			{
 				// memcpy-move is correct → let realloc fuse alloc+move (fast, in-place when possible)
-				void* p = allocator.realloc(allocator.ctx, data,
-					cap * (isize)sizeof(T), new_bytes, alignof(T));
+				void *p = allocator.realloc(allocator.ctx, data,
+											cap * (isize)sizeof(T), new_bytes, alignof(T));
 
 				mlw_debug_assert_msg(p != nullptr, "Vectro::grow failed to realloc");
-				data = static_cast<T*>(p);
+				data = static_cast<T *>(p);
 			}
 			else
 			{
 				// nontrivial move → realloc must NOT copy bytes. Pure alloc, manual relocate, free.
-				void* p = allocator.realloc(allocator.ctx, nullptr, 0, new_bytes, alignof(T));
+				void *p = allocator.realloc(allocator.ctx, nullptr, 0, new_bytes, alignof(T));
 				mlw_debug_assert_msg(p != nullptr, "Vectro::grow failed to realloc");
 
-				T* fresh = static_cast<T*>(p);
+				T *fresh = static_cast<T *>(p);
 
 				for (isize i = 0; i < length; ++i)
 				{
 					::new (fresh + i) T(core::move(data[i])); // real move ctor
-					data[i].~T();                             // destroy moved-from source
+					data[i].~T();							  // destroy moved-from source
 				}
 				if (data)
 					allocator.realloc(allocator.ctx, data, cap * (isize)sizeof(T), 0, alignof(T)); // free old
@@ -110,9 +110,9 @@ namespace core
 
 		/// \brief Deleted: vectors are not implicitly copyable.
 		/// \see clone
-		Vector(const Vector&) = delete;
+		Vector(const Vector &) = delete;
 		/// \copydoc Vector(const Vector&)
-		Vector& operator=(const Vector&) = delete;
+		Vector &operator=(const Vector &) = delete;
 
 		/// \brief Return a deep copy: a new vector with copies of every element.
 		///
@@ -124,11 +124,11 @@ namespace core
 		Vector clone() const
 			requires is_copy_constructible_v<T>
 		{
-			Vector ret{ allocator };
+			Vector ret{allocator};
 			if (cap == 0)
 				return ret; // already {nullptr, 0, 0} from the ctor
 
-			ret.data = static_cast<T*>(
+			ret.data = static_cast<T *>(
 				allocator.realloc(allocator.ctx, nullptr, 0, cap * static_cast<isize>(sizeof(T)), alignof(T)));
 			mlw_debug_assert_msg(ret.data != nullptr, "Vector::clone allocation returned nullptr");
 			ret.cap = cap;
@@ -141,7 +141,7 @@ namespace core
 			{
 				for (isize i = 0; i < length; ++i)
 				{
-					::new (ret.data + i) T(static_cast<const T&>(data[i])); // lvalue -> copy
+					::new (ret.data + i) T(static_cast<const T &>(data[i])); // lvalue -> copy
 				}
 			}
 
@@ -163,7 +163,7 @@ namespace core
 				}
 			}
 			if (data != nullptr)
-				data = static_cast<T*>(allocator.realloc(allocator.ctx, data, cap * sizeof(T), 0, alignof(T)));
+				data = static_cast<T *>(allocator.realloc(allocator.ctx, data, cap * sizeof(T), 0, alignof(T)));
 
 			length = 0;
 			cap = 0;
@@ -171,7 +171,7 @@ namespace core
 
 		/// \brief Move-construct, taking ownership of \p other's storage.
 		/// \post \p other is left empty and valid.
-		Vector(Vector&& other) : data(other.data), length(other.length), cap(other.cap), allocator(other.allocator)
+		Vector(Vector &&other) : data(other.data), length(other.length), cap(other.cap), allocator(other.allocator)
 		{
 			other.data = nullptr;
 			other.length = 0;
@@ -180,12 +180,12 @@ namespace core
 
 		/// \brief Move-assign: release current storage, then take \p other's.
 		/// \post \p other is left empty and valid. Self-assignment is a no-op.
-		Vector& operator=(Vector&& other)
+		Vector &operator=(Vector &&other)
 		{
 			if (this != &other)
 			{
 				deinit();
-				new (this) Vector{ move(other) };
+				new (this) Vector{move(other)};
 			}
 			return *this;
 		};
@@ -218,24 +218,24 @@ namespace core
 			if constexpr (is_trivially_copyable_v<T>)
 			{
 				// memcpy-move is correct → let realloc fuse alloc+move (fast, in-place when possible)
-				void* p = allocator.realloc(allocator.ctx, data,
-					cap * (isize)sizeof(T), new_bytes, alignof(T));
+				void *p = allocator.realloc(allocator.ctx, data,
+											cap * (isize)sizeof(T), new_bytes, alignof(T));
 				if (!p)
 					return false;
-				data = static_cast<T*>(p);
+				data = static_cast<T *>(p);
 			}
 			else
 			{
 				// nontrivial move → realloc must NOT copy bytes. Pure alloc, manual relocate, free.
-				void* p = allocator.realloc(allocator.ctx, nullptr, 0, new_bytes, alignof(T));
+				void *p = allocator.realloc(allocator.ctx, nullptr, 0, new_bytes, alignof(T));
 				if (!p)
 					return false; // old buffer untouched, still valid
-				T* fresh = static_cast<T*>(p);
+				T *fresh = static_cast<T *>(p);
 
 				for (isize i = 0; i < length; ++i)
 				{
 					::new (fresh + i) T(core::move(data[i])); // real move ctor
-					data[i].~T();                             // destroy moved-from source
+					data[i].~T();							  // destroy moved-from source
 				}
 				if (data)
 					allocator.realloc(allocator.ctx, data, cap * (isize)sizeof(T), 0, alignof(T)); // free old
@@ -274,7 +274,7 @@ namespace core
 			// shrink never relocates: same ptr back, no elements moved, regardless of T.
 			// realloc reclaims in place where it can (medium) and no-ops where it can't (small/OS).
 			allocator.realloc(allocator.ctx, data,
-				cap * (isize)sizeof(T), length * (isize)sizeof(T), alignof(T));
+							  cap * (isize)sizeof(T), length * (isize)sizeof(T), alignof(T));
 			cap = length;
 		}
 
@@ -315,13 +315,13 @@ namespace core
 
 		/// \brief Unchecked element access. \pre `0 <= i < len`.
 		/// \param i Element index.
-		T& operator[](isize i)
+		T &operator[](isize i)
 		{
 			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::operator[] out of bounds max: {}; acsesed: {}", length, i);
 			return data[i];
 		}
 		/// \copydoc operator[](isize)
-		const T& operator[](isize i) const
+		const T &operator[](isize i) const
 		{
 			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::operator[] out of bounds max: {}; acsesed: {}", length, i);
 			return data[i];
@@ -331,7 +331,7 @@ namespace core
 		/// \param i Element index.
 		/// \return Some reference to the element, or None if `i` is out of range
 		///         (including negative).
-		Optional<T&> get(isize i)
+		Optional<T &> get(isize i)
 		{
 			if (i < 0 || i >= length)
 			{
@@ -339,11 +339,11 @@ namespace core
 			}
 			else
 			{
-				return Optional<T&>{data[i]};
+				return Optional<T &>{data[i]};
 			}
 		}
 		/// \copydoc get(isize)
-		Optional<const T&> get(isize i) const
+		Optional<const T &> get(isize i) const
 		{
 			if (i < 0 || i >= length)
 			{
@@ -351,58 +351,58 @@ namespace core
 			}
 			else
 			{
-				return Optional<const T&>{data[i]};
+				return Optional<const T &>{data[i]};
 			}
 		}
 		/// \brief The first element, or None if empty.
-		Optional<T&> front()
+		Optional<T &> front()
 		{
 			if (length == 0)
 			{
 				return nullptr;
 			}
-			return Optional<T&>{data[0]};
+			return Optional<T &>{data[0]};
 		}
 		/// \copydoc front()
-		Optional<const T&> front() const
+		Optional<const T &> front() const
 		{
 			if (length == 0)
 			{
 				return nullptr;
 			}
-			return Optional<const T&>{data[0]};
+			return Optional<const T &>{data[0]};
 		}
 
 		/// \brief The last element, or None if empty.
-		Optional<T&> back()
+		Optional<T &> back()
 		{
 			if (length == 0)
 			{
 				return nullptr;
 			}
-			return Optional<T&>{data[length - 1]};
+			return Optional<T &>{data[length - 1]};
 		}
 		/// \copydoc back()
-		Optional<const T&> back() const
+		Optional<const T &> back() const
 		{
 			if (length == 0)
 			{
 				return nullptr;
 			}
-			return Optional<const T&>{data[length - 1]};
+			return Optional<const T &>{data[length - 1]};
 		}
 
 		/// \brief Pointer to the underlying storage (may be null when empty).
 		/// \warning Invalidated by any operation that grows or relocates.
-		T* rawData() { return data; }
+		T *rawData() { return data; }
 		/// \copydoc rawData()
-		const T* rawData() const { return data; }
+		const T *rawData() const { return data; }
 
 		// -- modifiers -----------------------------------------------------
 
 		/// \brief Append a copy of \p v. Grows if needed; panics on OOM.
 		/// \note Available only when `T` is copy-constructible.
-		void push(const T& v)
+		void push(const T &v)
 			requires is_copy_constructible_v<T>
 		{
 			if (length == cap)
@@ -413,7 +413,7 @@ namespace core
 
 		/// \brief Append \p v by moving. Grows if needed; panics on OOM.
 		/// \note Available only when `T` is move-constructible.
-		void push(T&& v)
+		void push(T &&v)
 			requires is_move_constructible_v<T>
 		{
 			if (length == cap)
@@ -425,7 +425,7 @@ namespace core
 		/// \brief Append a copy of \p v without checking capacity.
 		/// \pre `len < capacity` (caller must have reserved). \warning No bounds
 		///      or capacity check in release; writes past capacity are UB.
-		void pushAssumeCapacity(const T& v)
+		void pushAssumeCapacity(const T &v)
 			requires is_copy_constructible_v<T>
 		{
 			new (data + length) T(v);
@@ -433,7 +433,7 @@ namespace core
 		}
 		/// \brief Append \p v by moving without checking capacity.
 		/// \pre `len < capacity`. \warning As \ref pushAssumeCapacity(const T&).
-		void pushAssumeCapacity(T&& v)
+		void pushAssumeCapacity(T &&v)
 			requires is_move_constructible_v<T>
 		{
 			new (data + length) T(core::move(v));
@@ -446,7 +446,7 @@ namespace core
 		/// \param args Forwarded to `T`'s constructor.
 		/// \return Reference to the newly-constructed element.
 		template <typename... Args>
-		T& emplace(Args &&...args)
+		T &emplace(Args &&...args)
 			requires is_constructible_v<T, Args...>
 		{
 			if (length == cap)
@@ -461,7 +461,7 @@ namespace core
 		T pop()
 		{
 			mlw_debug_assert_msg(!isEmpty(), "Vector::pop poped a empty vector");
-			T ret{ move_if_movable(data[length - 1]) };
+			T ret{move_if_movable(data[length - 1])};
 
 			if constexpr (!is_trivially_destructible_v<T>)
 			{
@@ -478,7 +478,7 @@ namespace core
 		/// \pre `0 <= i <= len`.
 		/// \warning \p v must not alias this vector's storage (a grow may
 		///          relocate it mid-operation).
-		void insert(isize i, const T& v)
+		void insert(isize i, const T &v)
 			requires is_copy_constructible_v<T>
 		{
 			mlw_debug_assert_msg(i >= 0 && i <= length, "Vector::insert index out of range");
@@ -495,7 +495,8 @@ namespace core
 				for (isize j = length; j > i; --j)
 				{
 					::new (data + j) T(move_if_movable(data[j - 1]));
-					data[j - 1].~T();
+					if constexpr (!is_trivially_destructible_v<T>)
+						data[j - 1].~T();
 				}
 				// slot i is now raw (destroyed above); construct into the hole below.
 			}
@@ -505,7 +506,7 @@ namespace core
 
 		/// \brief Insert \p v at \p i by moving, shifting later elements right.
 		/// \copydetails insert(isize, const T&)
-		void insert(isize i, T&& v)
+		void insert(isize i, T &&v)
 			requires is_move_constructible_v<T>
 		{
 			mlw_debug_assert_msg(i >= 0 && i <= length, "Vector::insert index out of range");
@@ -520,7 +521,8 @@ namespace core
 				for (isize j = length; j > i; --j)
 				{
 					::new (data + j) T(move_if_movable(data[j - 1]));
-					data[j - 1].~T();
+					if constexpr (!is_trivially_destructible_v<T>)
+						data[j - 1].~T();
 				}
 			}
 			::new (data + i) T(core::move(v)); // named rvalue ref is an lvalue -> move() it
@@ -535,7 +537,7 @@ namespace core
 		{
 			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::remove index out of range");
 
-			T ret{ move_if_movable(data[i]) }; // extract the element to return
+			T ret{move_if_movable(data[i])}; // extract the element to return
 
 			if constexpr (is_trivially_copyable_v<T>)
 			{
@@ -544,11 +546,14 @@ namespace core
 			}
 			else
 			{
-				data[i].~T(); // moved-from source destroyed -> slot i raw
+				if constexpr (!is_trivially_destructible_v<T>)
+					data[i].~T(); // moved-from source destroyed -> slot i raw
+
 				for (isize j = i; j < length - 1; ++j)
 				{
 					::new (data + j) T(move_if_movable(data[j + 1]));
-					data[j + 1].~T(); // source destroyed -> next raw slot
+					if constexpr (!is_trivially_destructible_v<T>)
+						data[j + 1].~T(); // source destroyed -> next raw slot
 				}
 			}
 			--length;
@@ -563,7 +568,7 @@ namespace core
 		{
 			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::swapRemove index out of range");
 
-			T ret{ move_if_movable(data[i]) };
+			T ret{move_if_movable(data[i])};
 			if constexpr (!is_trivially_destructible_v<T>)
 				data[i].~T(); // slot i now raw
 
@@ -584,7 +589,7 @@ namespace core
 		///          vector's storage.
 		/// \param n Number of elements to copy (must be `>= 0`).
 		/// \note Available only when `T` is copy-constructible.
-		void extendFromPtr(const T* p, isize n)
+		void extendFromPtr(const T *p, isize n)
 			requires is_copy_constructible_v<T>
 		{
 			mlw_debug_assert_msg(n >= 0, "Vector::extendFromPtr negative count");
@@ -606,7 +611,7 @@ namespace core
 
 		template <FormatBuffer Buffer>
 			requires(FormattableValue<T, Buffer>)
-		void format(Buffer& buffer) const
+		void format(Buffer &buffer) const
 		{
 			buffer.append(CStr("{"));
 			for (isize i = 0; i < length; ++i)
@@ -618,25 +623,24 @@ namespace core
 			buffer.append(CStr("}"));
 		}
 
-
 		// ── iteration ─────────────────────────────────────────────────────────
 		// A Vector is contiguous, so its iterator is simply a pointer. Range-for
 		// needs only begin()/end(); pointer arithmetic gives ++, *, and != for free.
 
 		/// \brief Iterator to the first element (a raw `T*`).
 		/// \warning Invalidated by any operation that grows or relocates storage.
-		T* begin() { return data; }
+		T *begin() { return data; }
 		/// \brief Iterator one past the last element.
-		T* end() { return data + length; }
+		T *end() { return data + length; }
 
 		/// \copydoc begin()
-		const T* begin() const { return data; }
+		const T *begin() const { return data; }
 		/// \copydoc end()
-		const T* end() const { return data + length; }
+		const T *end() const { return data + length; }
 
 		/// \brief Const iterator to the first element, even on a non-const vector.
-		const T* cbegin() const { return data; }
+		const T *cbegin() const { return data; }
 		/// \brief Const iterator one past the last element.
-		const T* cend() const { return data + length; }
+		const T *cend() const { return data + length; }
 	};
 }
