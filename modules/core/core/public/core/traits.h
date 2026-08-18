@@ -148,6 +148,13 @@ namespace core
     template <typename T>
     constexpr bool is_reference_v = remove_ref<T>::is_ref;
 
+
+    template <typename T> concept Equatable = 
+    requires(const T &a, const T &b) { static_cast<bool>(a == b); };
+
+    template <typename T>
+    constexpr bool equatable_v = Equatable<T>;
+
     // trivially copyable — compiler builtin, no way to implement without it
     template <typename T> struct is_trivially_copyable { static constexpr bool value = __is_trivially_copyable(T); };
 

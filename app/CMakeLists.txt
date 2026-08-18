@@ -11,5 +11,7 @@ target_link_libraries(Mallow
     PRIVATE
         core::core
         entry
+        stl
+
 )
 

@@ -105,6 +105,30 @@ static __forceinline usize mlw_clz64(uint64 x)
 
 #endif
 
+
+/// \def MLW_PREFETCH(addr)
+/// \brief Hint the CPU to begin loading the cache line at addr for reading.
+///        Emits a prefetch instruction (never a load); any address is safe.
+#if defined(MLW_GCC) || defined(MLW_CLANG)
+#define MLW_PREFETCH(addr)   __builtin_prefetch((const void *)(addr), 0, 3) // read, T0
+#define MLW_PREFETCH_W(addr) __builtin_prefetch((const void *)(addr), 1, 3) // write, T0
+#elif defined(MLW_MSVC)
+#if defined(MLW_X64) || defined(MLW_X86)
+extern "C" void _mm_prefetch(char const *, int);
+#pragma intrinsic(_mm_prefetch)
+#define MLW_PREFETCH(addr)   _mm_prefetch((char const *)(addr), 1) // 1 == _MM_HINT_T0
+#define MLW_PREFETCH_W(addr) _mm_prefetch((char const *)(addr), 1)
+#elif defined(MLW_ARM64)
+extern "C" void __prefetch(void const *);
+#pragma intrinsic(__prefetch)
+#define MLW_PREFETCH(addr)   __prefetch((void const *)(addr))
+#define MLW_PREFETCH_W(addr) __prefetch((void const *)(addr))
+#endif
+#else
+#define MLW_PREFETCH(addr)   ((void)0)
+#define MLW_PREFETCH_W(addr) ((void)0)
+#endif
+
 /// \def MLW_FORCE_INLINE
 /// \brief Force an inline request to the compiler where supported.
 

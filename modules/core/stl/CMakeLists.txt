@@ -13,6 +13,8 @@ target_link_libraries(stl
 target_sources(stl
     PRIVATE
         public/stl/vector.h
+        public/stl/map.h
+        public/stl/list.h
 )
 
 target_include_directories(stl

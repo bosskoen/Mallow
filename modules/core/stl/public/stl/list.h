@@ -450,6 +450,24 @@ namespace core
         /// \brief Const iterator one past the last element.
         ConstIterator cend() const { return ConstIterator{nullptr}; }
 
+
+
+        template <FormatBuffer Buffer>
+			requires(FormattableValue<T, Buffer>)
+		void format(Buffer &buffer) const
+		{
+			buffer.append(CStr("{"));
+            Node* current = head;
+			for (isize i = 0; i < length; ++i)
+			{
+				if (i != 0)
+					buffer.append(CStr(", "));
+				detail::formatValue(buffer, current->data); // see below re: mlw_write vs formatValue
+                current= current->next;
+			}
+			buffer.append(CStr("}"));
+		}
+
     private:
         /// \brief Insert a new node at the head of the list.
         void insertNodeAtHead(Node *newNode)

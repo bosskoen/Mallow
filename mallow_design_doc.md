@@ -21,6 +21,7 @@ threading, CRT bootstrap.
 - [ ] add type erased error type
 - [ ] make libm constexpr
 - [ ] add __chkstk() and remove the fully commited stak
+- [ ] small mem* dont get optimised becous the compile doesnt see the mem* call
 
 
 ### entry
@@ -30,7 +31,13 @@ Runtime + program entry point; links `core` + `my_app` and produces the executab
 ### stl — *planned*
 Container library; the STL replacement.
 - [ ] decide the initial container set + allocator story
-- [ ] first container
+- [ ] make list sicrualr
+- [ ] make hashing containters
+- [ ] stress test stl
+- [ ] make vector smaller 40 -> 32 bytes
+- [ ] refrence stable unordered map or maby a uniqpointer stile thing
+- [ ] hashset
+
 
 ### io (file handling) — *planned*
 File read/write on top of core's io / writer.
