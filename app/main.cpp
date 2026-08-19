@@ -90,7 +90,7 @@ namespace
 
 	void run()
 	{
-		constexpr isize N = 1 << 27; // ~1M live keys
+		constexpr isize N = 1 << 24; // ~1M live keys
 		constexpr int REPS = 5;      // non-mutating phases
 		constexpr int REPS_MUT = 3;  // rebuild-each-time phases
 

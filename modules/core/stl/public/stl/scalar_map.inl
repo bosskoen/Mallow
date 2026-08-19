@@ -40,7 +40,7 @@ public:
 	struct Entry
 	{
 		K key;
-		V value;
+		MLW_NO_UNIQUE_ADDRESS V value;
 	};
 
 private:
@@ -130,7 +130,7 @@ private:
 		const isize oldCap = capacity;
 
 		const isize newCap = (capacity == 0) ? 15 : (capacity * 2 + 1); // 15,31,63,...
-		allocateTables(newCap);										   // sets ctrl/data/capacity, fills EMPTY
+		allocateTables(newCap);											// sets ctrl/data/capacity, fills EMPTY
 		size = 0;
 
 		if (oldCtrl != nullptr)
@@ -303,6 +303,37 @@ public:
 		::new (&data[t].key) K(key);
 		::new (&data[t].value) V(core::move(value));
 		return data[t].value;
+	}
+
+	/// \brief Insert `key` -> `value` **only if `key` is absent**. Unlike \ref put,
+	///        an existing entry is left untouched (its value is not overwritten and
+	///        `value` is dropped). \return true if a new entry was inserted, false
+	///        if `key` was already present.
+	///
+	/// \note Same reference-stability contract as \ref put: an insert that grows
+	///       the table relocates every entry, invalidating references previously
+	///       returned by \ref get / \ref put and any stored `Entry*`. A false
+	///       return performs no insert and never grows.
+	bool tryInsert(const K &key, V &&value)
+	{
+		const usize hash = swiss::hashKey(key);
+		if (findEntry(hash, key))
+			return false; // present -> leave it, report false
+		const usize t = prepareInsert(hash);
+		::new (&data[t].key) K(key);
+		::new (&data[t].value) V(core::move(value));
+		return true;
+	}
+	/// \copydoc tryInsert(const K&, V&&)
+	bool tryInsert(const K &key, const V &value)
+	{
+		const usize hash = swiss::hashKey(key);
+		if (findEntry(hash, key))
+			return false; // present -> leave it, report false
+		const usize t = prepareInsert(hash);
+		::new (&data[t].key) K(key);
+		::new (&data[t].value) V(value);
+		return true;
 	}
 
 	/// \brief Remove \p key if present. \return true if something was removed.

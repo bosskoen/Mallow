@@ -151,6 +151,11 @@ extern "C" void __prefetch(void const *);
 #define MLW_NO_RETURN [[noreturn]]
 #endif
 
+#if defined(MLW_MSVC)
+#  define MLW_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#  define MLW_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#endif
 
 
 /// \defgroup memory_order Memory Order Constants

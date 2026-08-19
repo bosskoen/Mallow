@@ -36,7 +36,7 @@ Container library; the STL replacement.
 - [ ] stress test stl
 - [ ] make vector smaller 40 -> 32 bytes
 - [ ] refrence stable unordered map or maby a uniqpointer stile thing
-- [ ] hashset
+- [ ] hashmap inserts doent move key
 
 
 ### io (file handling) — *planned*
