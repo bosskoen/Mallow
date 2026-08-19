@@ -49,7 +49,7 @@ private:
 	isize capacity = 0;		// probe bitmask (2^k - 1), or 0 when unallocated
 	isize size = 0;			// live elements
 	isize growth_left = 0;	// inserts-into-empty remaining before we must grow
-	AnonymousAllocator allocator;
+	const AnonymousAllocator* allocator;
 
 	// Real slots = capacity + 1 (capacity is the all-ones bitmask; no sentinel).
 	isize slotCount() const { return capacity == 0 ? 0 : capacity + 1; }
@@ -73,8 +73,8 @@ private:
 	{
 		usize slotOffset;
 		const usize total = blockLayout(cap, slotOffset);
-		void *p = allocator.realloc(allocator.ctx, nullptr, 0,
-									static_cast<isize>(total), static_cast<isize>(blockAlign()));
+		void *p = allocator->realloc(allocator, nullptr, 0,
+										static_cast<isize>(total), static_cast<isize>(blockAlign()));
 		mlw_debug_assert_msg(p != nullptr, "ScalarMap allocation returned nullptr");
 
 		ctrl = static_cast<ctrl_t *>(p);
@@ -89,8 +89,8 @@ private:
 	{
 		usize slotOffset;
 		const usize total = blockLayout(cap, slotOffset);
-		allocator.realloc(allocator.ctx, block, static_cast<isize>(total), 0,
-						  static_cast<isize>(blockAlign()));
+		allocator->realloc(allocator, block, static_cast<isize>(total), 0,
+							static_cast<isize>(blockAlign()));
 	}
 
 	Entry *findEntry(usize hash, const K &key) const
@@ -184,8 +184,8 @@ private:
 	}
 
 public:
-	ScalarMap() : allocator(core::default_allocator()) {}
-	explicit ScalarMap(AnonymousAllocator alloc) : allocator(alloc) {}
+	ScalarMap() : allocator(&core::default_allocator()) {}
+	explicit ScalarMap(const AnonymousAllocator* alloc) : allocator(alloc) {}
 
 	ScalarMap(const ScalarMap &) = delete;
 	ScalarMap &operator=(const ScalarMap &) = delete;

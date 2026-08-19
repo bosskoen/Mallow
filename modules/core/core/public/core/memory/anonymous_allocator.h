@@ -70,7 +70,7 @@ namespace core
         ///                  original \p align on every resize of the same block.
         /// \return Block of at least \p new_size bytes on alloc/resize; nullptr on free
         ///         or failure.
-        void *(*realloc)(void *ctx, void *ptr,
+        void *(*realloc)(const AnonymousAllocator *self, void *ptr,
                          isize old_size, isize new_size, isize align);
 
         /// \brief Opaque per-allocator state, passed back as the first argument

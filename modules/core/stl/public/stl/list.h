@@ -55,14 +55,14 @@ namespace core
         Node *head;   // First element in the list
         Node *tail;   // Last element in the list
         isize length; // Number of elements in the list
-        AnonymousAllocator allocator;
+        const AnonymousAllocator* allocator;
 
         /// \brief Create a new node with the given arguments.
         /// \warning Panics on allocation failure.
         template <typename... Args>
         Node *createNode(Args &&...args)
         {
-            void *p = allocator.realloc(allocator.ctx, nullptr, 0, sizeof(Node), alignof(Node));
+            void *p = allocator->realloc(allocator, nullptr, 0, sizeof(Node), alignof(Node));
             mlw_debug_assert_msg(p != nullptr, "List::createNode failed to allocate");
             return new (p) Node(core::forward<Args>(args)...);
         }
@@ -71,7 +71,7 @@ namespace core
         void destroyNode(Node *node)
         {
             node->data.~T();
-            allocator.realloc(allocator.ctx, node, sizeof(Node), 0, alignof(Node));
+            allocator->realloc(allocator, node, sizeof(Node), 0, alignof(Node));
         }
 
         /// \brief Get the node at index \p i.
@@ -103,12 +103,12 @@ namespace core
         // -- lifetime -----------------------------------------------------
 
         /// \brief Construct an empty list using \ref default_allocator.
-        List() : head(nullptr), tail(nullptr), length(0), allocator(core::default_allocator()) {}
+        List() : head(nullptr), tail(nullptr), length(0), allocator(&core::default_allocator()) {}
 
         /// \brief Construct an empty list that allocates from \p alloc.
         /// \param alloc Allocator captured by value and used for the list's
         ///              lifetime.
-        explicit List(AnonymousAllocator alloc) : head(nullptr), tail(nullptr), length(0), allocator(alloc) {}
+        explicit List(const AnonymousAllocator* alloc) : head(nullptr), tail(nullptr), length(0), allocator(alloc) {}
 
         /// \brief Deleted: lists are not implicitly copyable.
         /// \see clone

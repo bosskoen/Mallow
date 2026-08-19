@@ -413,7 +413,7 @@ namespace core
 		isize capacity = 0;		// probe bitmask (2^k - 1), or 0 when unallocated
 		isize size = 0;			// live elements
 		isize growth_left = 0;	// inserts-into-empty remaining before we must grow
-		AnonymousAllocator allocator;
+		const AnonymousAllocator* allocator;
 
 		/// Control bytes for a table of `cap` slots: cap + sentinel + (Width-1) clones.
 		static isize ctrlCount(isize cap) { return cap + swiss::Group::Width; }
@@ -492,7 +492,7 @@ namespace core
 		{
 			usize slotOffset;
 			const usize total = blockLayout(cap, slotOffset);
-			void *p = allocator.realloc(allocator.ctx, nullptr, 0,
+			void *p = allocator->realloc(allocator, nullptr, 0,
 										static_cast<isize>(total), static_cast<isize>(blockAlign()));
 			mlw_debug_assert_msg(p != nullptr, "Map allocation returned nullptr");
 
@@ -511,8 +511,8 @@ namespace core
 		{
 			usize slotOffset;
 			const usize total = blockLayout(cap, slotOffset);
-			allocator.realloc(allocator.ctx, block, static_cast<isize>(total), 0,
-							  static_cast<isize>(blockAlign()));
+			allocator->realloc(allocator, block, static_cast<isize>(total), 0,
+								static_cast<isize>(blockAlign()));
 		}
 
 		/// Double capacity (15 -> 31 -> 63 ...) and re-insert every live entry.
@@ -584,8 +584,8 @@ namespace core
 
 	public:
 		// ---- lifetime -------------------------------------------------------
-		Map() : allocator(core::default_allocator()) {}
-		explicit Map(AnonymousAllocator alloc) : allocator(alloc) {}
+		Map() : allocator(&core::default_allocator()) {}
+		explicit Map(const AnonymousAllocator* alloc) : allocator(alloc) {}
 
 		Map(const Map &) = delete;
 		Map &operator=(const Map &) = delete;
@@ -624,7 +624,7 @@ namespace core
 
 			usize slotOffset;
 			const usize total = blockLayout(capacity, slotOffset);
-			void *p = allocator.realloc(allocator.ctx, nullptr, 0,
+			void *p = allocator->realloc(allocator, nullptr, 0,
 										static_cast<isize>(total), static_cast<isize>(blockAlign()));
 			mlw_debug_assert_msg(p != nullptr, "Map::clone allocation returned nullptr");
 

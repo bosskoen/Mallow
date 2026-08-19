@@ -56,7 +56,7 @@ namespace core
 		T *data;
 		isize length;
 		isize cap;
-		AnonymousAllocator allocator;
+		const AnonymousAllocator* allocator;
 
 		static constexpr isize INITIAL_CAP = 8;
 		static constexpr f32 GROWTH_FACTOR = 2.f;
@@ -65,12 +65,13 @@ namespace core
 		///        from empty), relocating existing elements. Panics on OOM.
 		void grow()
 		{
-			const isize new_bytes = static_cast<isize>((cap == 0) ? (INITIAL_CAP * sizeof(T)) : ((cap * GROWTH_FACTOR) * sizeof(T)));
+			const isize new_cap = cap == 0 ? INITIAL_CAP : static_cast<isize>(cap * GROWTH_FACTOR);
+			const isize new_bytes = new_cap * sizeof(T);
 
 			if constexpr (is_trivially_copyable_v<T>)
 			{
 				// memcpy-move is correct → let realloc fuse alloc+move (fast, in-place when possible)
-				void *p = allocator.realloc(allocator.ctx, data,
+				void *p = allocator->realloc(allocator, data,
 											cap * (isize)sizeof(T), new_bytes, alignof(T));
 
 				mlw_debug_assert_msg(p != nullptr, "Vectro::grow failed to realloc");
@@ -79,7 +80,7 @@ namespace core
 			else
 			{
 				// nontrivial move → realloc must NOT copy bytes. Pure alloc, manual relocate, free.
-				void *p = allocator.realloc(allocator.ctx, nullptr, 0, new_bytes, alignof(T));
+				void *p = allocator->realloc(allocator, nullptr, 0, new_bytes, alignof(T));
 				mlw_debug_assert_msg(p != nullptr, "Vectro::grow failed to realloc");
 
 				T *fresh = static_cast<T *>(p);
@@ -90,23 +91,23 @@ namespace core
 					data[i].~T();							  // destroy moved-from source
 				}
 				if (data)
-					allocator.realloc(allocator.ctx, data, cap * (isize)sizeof(T), 0, alignof(T)); // free old
+					allocator->realloc(allocator, data, cap * (isize)sizeof(T), 0, alignof(T)); // free old
 				data = fresh;
 			}
 
-			cap = cap == 0 ? cap = INITIAL_CAP : static_cast<isize>(cap * GROWTH_FACTOR);
+			cap = new_cap;
 		}
 
 	public:
 		// -- lifetime -----------------------------------------------------
 
 		/// \brief Construct an empty vector using \ref default_allocator.
-		Vector() : data(nullptr), length(0), cap(0), allocator(core::default_allocator()) {}
+		Vector() : data(nullptr), length(0), cap(0), allocator(&core::default_allocator()) {}
 
 		/// \brief Construct an empty vector that allocates from \p alloc.
 		/// \param alloc Allocator captured by value and used for the vector's
 		///              lifetime.
-		explicit Vector(AnonymousAllocator alloc) : data(nullptr), length(0), cap(0), allocator(alloc) {}
+		explicit Vector(const AnonymousAllocator* alloc) : data(nullptr), length(0), cap(0), allocator(alloc) {}
 
 		/// \brief Deleted: vectors are not implicitly copyable.
 		/// \see clone
@@ -129,7 +130,7 @@ namespace core
 				return ret; // already {nullptr, 0, 0} from the ctor
 
 			ret.data = static_cast<T *>(
-				allocator.realloc(allocator.ctx, nullptr, 0, cap * static_cast<isize>(sizeof(T)), alignof(T)));
+				allocator->realloc(allocator, nullptr, 0, cap * static_cast<isize>(sizeof(T)), alignof(T)));
 			mlw_debug_assert_msg(ret.data != nullptr, "Vector::clone allocation returned nullptr");
 			ret.cap = cap;
 
@@ -163,7 +164,7 @@ namespace core
 				}
 			}
 			if (data != nullptr)
-				data = static_cast<T *>(allocator.realloc(allocator.ctx, data, cap * sizeof(T), 0, alignof(T)));
+				data = static_cast<T *>(allocator->realloc(allocator, data, cap * sizeof(T), 0, alignof(T)));
 
 			length = 0;
 			cap = 0;
@@ -218,7 +219,7 @@ namespace core
 			if constexpr (is_trivially_copyable_v<T>)
 			{
 				// memcpy-move is correct → let realloc fuse alloc+move (fast, in-place when possible)
-				void *p = allocator.realloc(allocator.ctx, data,
+				void *p = allocator->realloc(allocator, data,
 											cap * (isize)sizeof(T), new_bytes, alignof(T));
 				if (!p)
 					return false;
@@ -227,7 +228,7 @@ namespace core
 			else
 			{
 				// nontrivial move → realloc must NOT copy bytes. Pure alloc, manual relocate, free.
-				void *p = allocator.realloc(allocator.ctx, nullptr, 0, new_bytes, alignof(T));
+				void *p = allocator->realloc(allocator, nullptr, 0, new_bytes, alignof(T));
 				if (!p)
 					return false; // old buffer untouched, still valid
 				T *fresh = static_cast<T *>(p);
@@ -238,7 +239,7 @@ namespace core
 					data[i].~T();							  // destroy moved-from source
 				}
 				if (data)
-					allocator.realloc(allocator.ctx, data, cap * (isize)sizeof(T), 0, alignof(T)); // free old
+					allocator->realloc(allocator, data, cap * (isize)sizeof(T), 0, alignof(T)); // free old
 				data = fresh;
 			}
 
@@ -273,7 +274,7 @@ namespace core
 
 			// shrink never relocates: same ptr back, no elements moved, regardless of T.
 			// realloc reclaims in place where it can (medium) and no-ops where it can't (small/OS).
-			allocator.realloc(allocator.ctx, data,
+			allocator->realloc(allocator, data,
 							  cap * (isize)sizeof(T), length * (isize)sizeof(T), alignof(T));
 			cap = length;
 		}

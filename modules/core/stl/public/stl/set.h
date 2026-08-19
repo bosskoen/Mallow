@@ -59,7 +59,7 @@ namespace core
 		/// \brief Empty set backed by the default allocator.
 		Set() = default;
 		/// \brief Empty set backed by \p a.
-		explicit Set(AnonymousAllocator a) : map(a) {}
+		explicit Set(const AnonymousAllocator* a) : map(a) {}
 
 		// -- insert -----------------------------------------------------------
 		/// \brief Insert \p v if absent. \return true if newly inserted, false if
