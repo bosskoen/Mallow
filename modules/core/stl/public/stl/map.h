@@ -6,6 +6,7 @@
 #include <core/libc/mem.h>
 #include <core/macro.h>
 #include <core/optional.h>
+#include <core/hash.h>
 
 /// \file
 /// \brief Open-addressing SwissTable hash map (Abseil flat_hash_map / hashbrown
@@ -90,56 +91,6 @@
 
 namespace core
 {
-	/// \brief splitmix64 finalizer: strong avalanche, cheap. Used to scramble
-	///        raw key bits so H1/H2 are well distributed even for sequential keys.
-	MLW_FORCE_INLINE uint64 mix64(uint64 x)
-	{
-		x ^= x >> 30;
-		x *= 0xbf58476d1ce4e5b9ull;
-		x ^= x >> 27;
-		x *= 0x94d049bb133111ebull;
-		x ^= x >> 31;
-		return x;
-	}
-
-	/// \brief Customization point. Specialize `Hash<T>` to use `T` as a key.
-	///        Integers, bools and pointers work out of the box; the unspecialized
-	///        template is a hard error so an unhashable key fails at compile time.
-	template <typename T>
-	struct Hash
-	{
-		static_assert(sizeof(T) == 0,
-					  "No Hash<T> for this key type: add a core::Hash<T> specialization.");
-	};
-
-	template <typename T>
-		requires(is_integer_v<T> || is_bool_v<T>)
-	struct Hash<T>
-	{
-		usize operator()(T v) const
-		{
-			if constexpr (sizeof(T) > 8)
-			{
-				const uint64 lo = static_cast<uint64>(v);
-				const uint64 hi = static_cast<uint64>(v >> 64);
-				return static_cast<usize>(mix64(lo ^ mix64(hi)));
-			}
-			else
-			{
-				return static_cast<usize>(mix64(static_cast<uint64>(v)));
-			}
-		}
-	};
-
-	template <typename T>
-		requires is_pointer_v<T>
-	struct Hash<T>
-	{
-		usize operator()(T v) const
-		{
-			return static_cast<usize>(mix64(static_cast<uint64>(reinterpret_cast<uptr>(v))));
-		}
-	};
 
 	namespace swiss
 	{
@@ -413,7 +364,7 @@ namespace core
 		isize capacity = 0;		// probe bitmask (2^k - 1), or 0 when unallocated
 		isize size = 0;			// live elements
 		isize growth_left = 0;	// inserts-into-empty remaining before we must grow
-		const AnonymousAllocator* allocator;
+		const AnonymousAllocator *allocator;
 
 		/// Control bytes for a table of `cap` slots: cap + sentinel + (Width-1) clones.
 		static isize ctrlCount(isize cap) { return cap + swiss::Group::Width; }
@@ -493,7 +444,7 @@ namespace core
 			usize slotOffset;
 			const usize total = blockLayout(cap, slotOffset);
 			void *p = allocator->realloc(allocator, nullptr, 0,
-										static_cast<isize>(total), static_cast<isize>(blockAlign()));
+										 static_cast<isize>(total), static_cast<isize>(blockAlign()));
 			mlw_debug_assert_msg(p != nullptr, "Map allocation returned nullptr");
 
 			ctrl = static_cast<ctrl_t *>(p);
@@ -512,7 +463,7 @@ namespace core
 			usize slotOffset;
 			const usize total = blockLayout(cap, slotOffset);
 			allocator->realloc(allocator, block, static_cast<isize>(total), 0,
-								static_cast<isize>(blockAlign()));
+							   static_cast<isize>(blockAlign()));
 		}
 
 		/// Double capacity (15 -> 31 -> 63 ...) and re-insert every live entry.
@@ -582,10 +533,37 @@ namespace core
 			return target;
 		}
 
+		template <typename Kk, typename Vv>
+		V &putImpl(Kk &&key, Vv &&value)
+		{
+			const usize hash = swiss::hashKey(key); // key is still a valid lvalue here
+			if (Entry *e = findEntry(hash, key))
+			{
+				e->value.~V();
+				::new (&e->value) V(core::forward<Vv>(value));
+				return e->value;
+			}
+			const usize t = prepareInsert(hash);
+			::new (&data[t].key) K(core::forward<Kk>(key)); // moves iff caller passed an rvalue
+			::new (&data[t].value) V(core::forward<Vv>(value));
+			return data[t].value;
+		}
+		template <typename Kk, typename Vv>
+		bool tryInsertImpl(Kk &&key, Vv &&value)
+		{
+			const usize hash = swiss::hashKey(key);
+			if (findEntry(hash, key))
+				return false;
+			const usize t = prepareInsert(hash);
+			::new (&data[t].key) K(core::forward<Kk>(key));
+			::new (&data[t].value) V(core::forward<Vv>(value));
+			return true;
+		}
+
 	public:
 		// ---- lifetime -------------------------------------------------------
 		Map() : allocator(&core::default_allocator()) {}
-		explicit Map(const AnonymousAllocator* alloc) : allocator(alloc) {}
+		explicit Map(const AnonymousAllocator *alloc) : allocator(alloc) {}
 
 		Map(const Map &) = delete;
 		Map &operator=(const Map &) = delete;
@@ -625,7 +603,7 @@ namespace core
 			usize slotOffset;
 			const usize total = blockLayout(capacity, slotOffset);
 			void *p = allocator->realloc(allocator, nullptr, 0,
-										static_cast<isize>(total), static_cast<isize>(blockAlign()));
+										 static_cast<isize>(total), static_cast<isize>(blockAlign()));
 			mlw_debug_assert_msg(p != nullptr, "Map::clone allocation returned nullptr");
 
 			ret.ctrl = static_cast<ctrl_t *>(p);
@@ -681,34 +659,14 @@ namespace core
 
 		// ---- insert ---------------------------------------------------------
 		/// \brief Insert or overwrite `key` -> `value`. \return Reference to the value.
-		V &put(const K &key, const V &value)
-		{
-			const usize hash = swiss::hashKey(key);
-			if (Entry *e = findEntry(hash, key))
-			{
-				e->value.~V(); // construct/destroy, never assign
-				::new (&e->value) V(value);
-				return e->value;
-			}
-			const usize t = prepareInsert(hash);
-			::new (&data[t].key) K(key);
-			::new (&data[t].value) V(value);
-			return data[t].value;
-		}
-		V &put(const K &key, V &&value)
-		{
-			const usize hash = swiss::hashKey(key);
-			if (Entry *e = findEntry(hash, key))
-			{
-				e->value.~V();
-				::new (&e->value) V(core::move(value));
-				return e->value;
-			}
-			const usize t = prepareInsert(hash);
-			::new (&data[t].key) K(key);
-			::new (&data[t].value) V(core::move(value));
-			return data[t].value;
-		}
+		// existing: copy key, copy value
+		V &put(const K &key, const V &value) { return putImpl(key, value); }
+		// existing: copy key, move value
+		V &put(const K &key, V &&value) { return putImpl(key, core::move(value)); }
+		// NEW: move key, copy value
+		V &put(K &&key, const V &value) { return putImpl(core::move(key), value); }
+		// NEW: move key, move value
+		V &put(K &&key, V &&value) { return putImpl(core::move(key), core::move(value)); }
 
 		/// \brief Insert `key` -> `value` **only if `key` is absent**. Unlike \ref put,
 		///        an existing entry is left untouched (its value is not overwritten and
@@ -719,27 +677,13 @@ namespace core
 		///       the table relocates every entry, invalidating references previously
 		///       returned by \ref get / \ref put and any stored `Entry*`. A false
 		///       return performs no insert and never grows.
-		bool tryInsert(const K &key, V &&value)
-		{
-			const usize hash = swiss::hashKey(key);
-			if (findEntry(hash, key))
-				return false; // present -> leave it, report false
-			const usize t = prepareInsert(hash);
-			::new (&data[t].key) K(key);
-			::new (&data[t].value) V(core::move(value));
-			return true;
-		}
+		bool tryInsert(const K &key, const V &value) { return tryInsertImpl(key, value); }
 		/// \copydoc tryInsert(const K&, V&&)
-		bool tryInsert(const K &key, const V &value)
-		{
-			const usize hash = swiss::hashKey(key);
-			if (findEntry(hash, key))
-				return false; // present -> leave it, report false
-			const usize t = prepareInsert(hash);
-			::new (&data[t].key) K(key);
-			::new (&data[t].value) V(value);
-			return true;
-		}
+		bool tryInsert(const K &key, V &&value) { return tryInsertImpl(key, core::move(value)); }
+		/// \copydoc tryInsert(const K&, V&&)
+		bool tryInsert(K &&key, const V &value) { return tryInsertImpl(core::move(key), value); }
+		/// \copydoc tryInsert(const K&, V&&)
+		bool tryInsert(K &&key, V &&value) { return tryInsertImpl(core::move(key), core::move(value)); }
 
 		// ---- erase ----------------------------------------------------------
 		/// \brief Remove `key` if present. \return true if something was removed.

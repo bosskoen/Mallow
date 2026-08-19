@@ -16,6 +16,7 @@ target_sources(stl
         public/stl/map.h
         public/stl/list.h
         public/stl/set.h
+        public/stl/string.h
 )
 
 target_include_directories(stl

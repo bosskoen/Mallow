@@ -49,7 +49,7 @@ private:
 	isize capacity = 0;		// probe bitmask (2^k - 1), or 0 when unallocated
 	isize size = 0;			// live elements
 	isize growth_left = 0;	// inserts-into-empty remaining before we must grow
-	const AnonymousAllocator* allocator;
+	const AnonymousAllocator *allocator;
 
 	// Real slots = capacity + 1 (capacity is the all-ones bitmask; no sentinel).
 	isize slotCount() const { return capacity == 0 ? 0 : capacity + 1; }
@@ -74,7 +74,7 @@ private:
 		usize slotOffset;
 		const usize total = blockLayout(cap, slotOffset);
 		void *p = allocator->realloc(allocator, nullptr, 0,
-										static_cast<isize>(total), static_cast<isize>(blockAlign()));
+									 static_cast<isize>(total), static_cast<isize>(blockAlign()));
 		mlw_debug_assert_msg(p != nullptr, "ScalarMap allocation returned nullptr");
 
 		ctrl = static_cast<ctrl_t *>(p);
@@ -90,7 +90,7 @@ private:
 		usize slotOffset;
 		const usize total = blockLayout(cap, slotOffset);
 		allocator->realloc(allocator, block, static_cast<isize>(total), 0,
-							static_cast<isize>(blockAlign()));
+						   static_cast<isize>(blockAlign()));
 	}
 
 	Entry *findEntry(usize hash, const K &key) const
@@ -182,10 +182,36 @@ private:
 		ctrl[target] = swiss::H2(hash);
 		return target;
 	}
+	template <typename Kk, typename Vv>
+	V &putImpl(Kk &&key, Vv &&value)
+	{
+		const usize hash = swiss::hashKey(key); // key is still a valid lvalue here
+		if (Entry *e = findEntry(hash, key))
+		{
+			e->value.~V();
+			::new (&e->value) V(core::forward<Vv>(value));
+			return e->value;
+		}
+		const usize t = prepareInsert(hash);
+		::new (&data[t].key) K(core::forward<Kk>(key)); // moves iff caller passed an rvalue
+		::new (&data[t].value) V(core::forward<Vv>(value));
+		return data[t].value;
+	}
+	template <typename Kk, typename Vv>
+	bool tryInsertImpl(Kk &&key, Vv &&value)
+	{
+		const usize hash = swiss::hashKey(key);
+		if (findEntry(hash, key))
+			return false;
+		const usize t = prepareInsert(hash);
+		::new (&data[t].key) K(core::forward<Kk>(key));
+		::new (&data[t].value) V(core::forward<Vv>(value));
+		return true;
+	}
 
 public:
 	ScalarMap() : allocator(&core::default_allocator()) {}
-	explicit ScalarMap(const AnonymousAllocator* alloc) : allocator(alloc) {}
+	explicit ScalarMap(const AnonymousAllocator *alloc) : allocator(alloc) {}
 
 	ScalarMap(const ScalarMap &) = delete;
 	ScalarMap &operator=(const ScalarMap &) = delete;
@@ -276,34 +302,15 @@ public:
 	}
 
 	// -- insert -----------------------------------------------------------
-	V &put(const K &key, const V &value)
-	{
-		const usize hash = swiss::hashKey(key);
-		if (Entry *e = findEntry(hash, key))
-		{
-			e->value.~V();
-			::new (&e->value) V(value);
-			return e->value;
-		}
-		const usize t = prepareInsert(hash);
-		::new (&data[t].key) K(key);
-		::new (&data[t].value) V(value);
-		return data[t].value;
-	}
-	V &put(const K &key, V &&value)
-	{
-		const usize hash = swiss::hashKey(key);
-		if (Entry *e = findEntry(hash, key))
-		{
-			e->value.~V();
-			::new (&e->value) V(core::move(value));
-			return e->value;
-		}
-		const usize t = prepareInsert(hash);
-		::new (&data[t].key) K(key);
-		::new (&data[t].value) V(core::move(value));
-		return data[t].value;
-	}
+	/// \brief Insert or overwrite `key` -> `value`. \return Reference to the value.
+	// existing: copy key, copy value
+	V &put(const K &key, const V &value) { return putImpl(key, value); }
+	// existing: copy key, move value
+	V &put(const K &key, V &&value) { return putImpl(key, core::move(value)); }
+	// NEW: move key, copy value
+	V &put(K &&key, const V &value) { return putImpl(core::move(key), value); }
+	// NEW: move key, move value
+	V &put(K &&key, V &&value) { return putImpl(core::move(key), core::move(value)); }
 
 	/// \brief Insert `key` -> `value` **only if `key` is absent**. Unlike \ref put,
 	///        an existing entry is left untouched (its value is not overwritten and
@@ -314,27 +321,13 @@ public:
 	///       the table relocates every entry, invalidating references previously
 	///       returned by \ref get / \ref put and any stored `Entry*`. A false
 	///       return performs no insert and never grows.
-	bool tryInsert(const K &key, V &&value)
-	{
-		const usize hash = swiss::hashKey(key);
-		if (findEntry(hash, key))
-			return false; // present -> leave it, report false
-		const usize t = prepareInsert(hash);
-		::new (&data[t].key) K(key);
-		::new (&data[t].value) V(core::move(value));
-		return true;
-	}
+	V &tryInsert(const K &key, const V &value) { return tryInsertImpl(key, value); }
 	/// \copydoc tryInsert(const K&, V&&)
-	bool tryInsert(const K &key, const V &value)
-	{
-		const usize hash = swiss::hashKey(key);
-		if (findEntry(hash, key))
-			return false; // present -> leave it, report false
-		const usize t = prepareInsert(hash);
-		::new (&data[t].key) K(key);
-		::new (&data[t].value) V(value);
-		return true;
-	}
+	V &tryInsert(const K &key, V &&value) { return tryInsertImpl(key, core::move(value)); }
+	/// \copydoc tryInsert(const K&, V&&)
+	V &tryInsert(K &&key, const V &value) { return tryInsertImpl(core::move(key), value); }
+	/// \copydoc tryInsert(const K&, V&&)
+	V &tryInsert(K &&key, V &&value) { return tryInsertImpl(core::move(key), core::move(value)); }
 
 	/// \brief Remove \p key if present. \return true if something was removed.
 	/// Downgrades the slot to EMPTY when the next slot is already EMPTY (no chain

@@ -67,6 +67,8 @@ namespace core
 		///        insert-if-absent primitive); a false return performs no work and
 		///        never grows the table.
 		bool insert(const T &v) { return map.tryInsert(v, EmptySetType{}); }
+        /// \copydoc insert(const T&)
+		bool insert(T &&v) { return map.tryInsert(core::move(v), EmptySetType{}); }
 
 		// -- lookup -----------------------------------------------------------
 		/// \brief \return true if \p v is in the set.
