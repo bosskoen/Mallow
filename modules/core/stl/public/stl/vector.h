@@ -614,14 +614,14 @@ namespace core
 			requires(FormattableValue<T, Buffer>)
 		void format(Buffer &buffer) const
 		{
-			buffer.append(CStr("{"));
+			buffer.append('{');
 			for (isize i = 0; i < length; ++i)
 			{
 				if (i != 0)
 					buffer.append(CStr(", "));
 				detail::formatValue(buffer, data[i]); // see below re: mlw_write vs formatValue
 			}
-			buffer.append(CStr("}"));
+			buffer.append('}');
 		}
 
 		// ── iteration ─────────────────────────────────────────────────────────

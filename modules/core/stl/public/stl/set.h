@@ -28,87 +28,106 @@
 
 namespace core
 {
-	/// \brief A SwissTable hash set of `T`, built on \ref Map<T, EmptySetType>.
-	///
-	/// \tparam T Element type; needs `operator==` and a `core::Hash<T>` (i.e. it
-	///           must satisfy \ref HashKey), exactly as a map key does.
-	///
-	/// Construct/lookup/erase all forward to the underlying map. See the file
-	/// header for the facade rationale, the empty-value layout trick, and the
-	/// reference-stability / copyability notes.
-	template <HashKey T>
-	class Set
-	{
-		/// Empty stand-in for the map's value type. Folds to zero size via the
-		/// `[[no_unique_address]]` on \ref Map::Entry::value.
-		struct EmptySetType {};
+    /// \ingroup formattable
+    /// \brief A SwissTable hash set of `T`, built on \ref Map<T, EmptySetType>.
+    ///
+    /// \tparam T Element type; needs `operator==` and a `core::Hash<T>` (i.e. it
+    ///           must satisfy \ref HashKey), exactly as a map key does.
+    ///
+    /// Construct/lookup/erase all forward to the underlying map. See the file
+    /// header for the facade rationale, the empty-value layout trick, and the
+    /// reference-stability / copyability notes.
+    template <HashKey T>
+    class Set
+    {
+        /// Empty stand-in for the map's value type. Folds to zero size via the
+        /// `[[no_unique_address]]` on \ref Map::Entry::value.
+        struct EmptySetType
+        {
+        };
 
-		/// Resolves to the SIMD map or the scalar fallback, whichever \ref map.h
-		/// selected at compile time. The set is agnostic to which.
-		using M = Map<T, EmptySetType>;
-		M map;
+        /// Resolves to the SIMD map or the scalar fallback, whichever \ref map.h
+        /// selected at compile time. The set is agnostic to which.
+        using M = Map<T, EmptySetType>;
+        M map;
 
-		// Guards the empty-value layout trick: if any toolchain fails to collapse
-		// the empty value into the key's storage, fail loudly at compile time
-		// rather than silently doubling per-slot memory.
-		static_assert(sizeof(typename M::Entry) == sizeof(T),
-					  "Set slot bloated: no_unique_address not honored on this toolchain.");
+        // Guards the empty-value layout trick: if any toolchain fails to collapse
+        // the empty value into the key's storage, fail loudly at compile time
+        // rather than silently doubling per-slot memory.
+        static_assert(sizeof(typename M::Entry) == sizeof(T),
+                      "Set slot bloated: no_unique_address not honored on this toolchain.");
 
-	public:
-		// -- lifetime ---------------------------------------------------------
-		/// \brief Empty set backed by the default allocator.
-		Set() = default;
-		/// \brief Empty set backed by \p a.
-		explicit Set(const AnonymousAllocator* a) : map(a) {}
+    public:
+        // -- lifetime ---------------------------------------------------------
+        /// \brief Empty set backed by the default allocator.
+        Set() = default;
+        /// \brief Empty set backed by \p a.
+        explicit Set(const AnonymousAllocator *a) : map(a) {}
 
-		// -- insert -----------------------------------------------------------
-		/// \brief Insert \p v if absent. \return true if newly inserted, false if
-		///        \p v was already present. Single-probe (forwards to the map's
-		///        insert-if-absent primitive); a false return performs no work and
-		///        never grows the table.
-		bool insert(const T &v) { return map.tryInsert(v, EmptySetType{}); }
+        // -- insert -----------------------------------------------------------
+        /// \brief Insert \p v if absent. \return true if newly inserted, false if
+        ///        \p v was already present. Single-probe (forwards to the map's
+        ///        insert-if-absent primitive); a false return performs no work and
+        ///        never grows the table.
+        bool insert(const T &v) { return map.tryInsert(v, EmptySetType{}); }
         /// \copydoc insert(const T&)
-		bool insert(T &&v) { return map.tryInsert(core::move(v), EmptySetType{}); }
+        bool insert(T &&v) { return map.tryInsert(core::move(v), EmptySetType{}); }
 
-		// -- lookup -----------------------------------------------------------
-		/// \brief \return true if \p v is in the set.
-		bool contains(const T &v) const { return map.contains(v); }
-		/// \brief \return number of elements.
-		isize len() const { return map.len(); }
-		/// \brief \return true if the set has no elements.
-		bool isEmpty() const { return map.isEmpty(); }
+        // -- lookup -----------------------------------------------------------
+        /// \brief \return true if \p v is in the set.
+        bool contains(const T &v) const { return map.contains(v); }
+        /// \brief \return number of elements.
+        isize len() const { return map.len(); }
+        /// \brief \return true if the set has no elements.
+        bool isEmpty() const { return map.isEmpty(); }
 
-		// -- erase ------------------------------------------------------------
-		/// \brief Remove \p v if present. \return true if something was removed.
-		bool remove(const T &v) { return map.remove(v); }
-		/// \brief Destroy all elements but keep the allocated capacity.
-		void clear() { map.clear(); }
+        // -- erase ------------------------------------------------------------
+        /// \brief Remove \p v if present. \return true if something was removed.
+        bool remove(const T &v) { return map.remove(v); }
+        /// \brief Destroy all elements but keep the allocated capacity.
+        void clear() { map.clear(); }
 
-		// -- copy -------------------------------------------------------------
-		/// \brief Deep copy. Available only when `T` is copyable.
-		Set clone() const
-			requires is_copy_constructible_v<T>
-		{
-			Set s;
-			s.map = map.clone();
-			return s;
-		}
+        // -- copy -------------------------------------------------------------
+        /// \brief Deep copy. Available only when `T` is copyable.
+        Set clone() const
+            requires is_copy_constructible_v<T>
+        {
+            Set s;
+            s.map = map.clone();
+            return s;
+        }
 
-		// -- iteration (yields keys by const& for full slots only) ------------
-		/// \brief Forward const iterator over set elements. Wraps the map's entry
-		///        iterator and projects to the key; never yields a mutable key.
-		struct ConstIterator
-		{
-			typename M::ConstIterator it;
-			const T &operator*() const { return (*it).key; } // const& — never hand out mutable keys
-			bool operator!=(const ConstIterator &o) const { return it != o.it; }
-			ConstIterator &operator++()
-			{
-				++it;
-				return *this;
-			}
-		};
-		ConstIterator begin() const { return {map.begin()}; }
-		ConstIterator end() const { return {map.end()}; }
-	};
+        // -- iteration (yields keys by const& for full slots only) ------------
+        /// \brief Forward const iterator over set elements. Wraps the map's entry
+        ///        iterator and projects to the key; never yields a mutable key.
+        struct ConstIterator
+        {
+            typename M::ConstIterator it;
+            const T &operator*() const { return (*it).key; } // const& — never hand out mutable keys
+            bool operator!=(const ConstIterator &o) const { return it != o.it; }
+            ConstIterator &operator++()
+            {
+                ++it;
+                return *this;
+            }
+        };
+        ConstIterator begin() const { return {map.begin()}; }
+        ConstIterator end() const { return {map.end()}; }
+
+        template <FormatBuffer Buffer>
+            requires(FormattableValue<T, Buffer>)
+        void format(Buffer &buffer) const
+        {
+            buffer.append('{');
+            bool first = true;
+            for (const T &value : *this) // Set iteration yields const T& (the key)
+            {
+                if (!first)
+                    buffer.append(", ");
+                first = false;
+                detail::formatValue(buffer, value); // value IS the element — no .key
+            }
+            buffer.append('}');
+        }
+    };
 } // namespace core

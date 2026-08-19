@@ -440,4 +440,24 @@ public:
 		return it;
 	}
 	ConstIterator end() const { return ConstIterator{this, slotCount()}; }
+
+	template <FormatBuffer Buffer>
+			requires(FormattableValue<K, Buffer> && FormattableValue<V, Buffer>)
+		void format(Buffer &buffer) const
+		{
+			buffer.append('{');
+			bool first = true;
+			for (const auto &entry : *this) // entry is const Entry&
+			{
+				if (!first)
+					buffer.append(", ");
+				first = false;
+				buffer.append('[');
+				detail::formatValue(buffer, entry.key);
+				buffer.append("; ");
+				detail::formatValue(buffer, entry.value);
+				buffer.append(']');
+			}
+			buffer.append('}');
+		}
 };

@@ -338,6 +338,7 @@ namespace core
 	concept HashKey = HashStorable<T> && Equatable<T>;
 
 #ifdef MLW_SIMD_MAP_EXELERATION
+	/// \ingroup formattable
 	/// \brief A SwissTable hash map from `K` to `V`, group-scanned via \ref swiss::Group.
 	///
 	/// \tparam K Key type; needs `operator==` and a `core::Hash<K>`.
@@ -803,6 +804,26 @@ namespace core
 			return it;
 		}
 		ConstIterator end() const { return ConstIterator{this, capacity}; }
+
+		template <FormatBuffer Buffer>
+			requires(FormattableValue<K, Buffer> && FormattableValue<V, Buffer>)
+		void format(Buffer &buffer) const
+		{
+			buffer.append('{');
+			bool first = true;
+			for (const auto &entry : *this) // entry is const Entry&
+			{
+				if (!first)
+					buffer.append(", ");
+				first = false;
+				buffer.append('[');
+				detail::formatValue(buffer, entry.key);
+				buffer.append("; ");
+				detail::formatValue(buffer, entry.value);
+				buffer.append(']');
+			}
+			buffer.append('}');
+		}
 	};
 #else
 	// No group backend selected (MLW_LINIAR_MAP_PROBE, or an unsupported target):

@@ -456,7 +456,7 @@ namespace core
 			requires(FormattableValue<T, Buffer>)
 		void format(Buffer &buffer) const
 		{
-			buffer.append(CStr("{"));
+			buffer.append('{');
             Node* current = head;
 			for (isize i = 0; i < length; ++i)
 			{
@@ -465,7 +465,7 @@ namespace core
 				detail::formatValue(buffer, current->data); // see below re: mlw_write vs formatValue
                 current= current->next;
 			}
-			buffer.append(CStr("}"));
+			buffer.append('}');
 		}
 
     private:
