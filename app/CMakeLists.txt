@@ -14,6 +14,7 @@ target_link_libraries(Mallow
 )
 
 target_link_libraries(Mallow
-    PRIVATE
+    PUBLIC
+        core::iterators
         core::file_system
         )

@@ -194,7 +194,7 @@ namespace core
 		///       \ref CStr's array constructor; use the \ref CStr overload for
 		///       partially-filled buffers or embedded NULs.
 		template <index_t N>
-		String(const char (&lit)[N]) : allocator(&core::default_allocator())
+		explicit String(const char (&lit)[N]) : allocator(&core::default_allocator())
 		{
 			initFrom(CStr(lit));
 		}
