@@ -81,6 +81,7 @@ if(MLW_ABI_MSVC)
     target_sources(core PRIVATE
         private/windows_crt/crt.cpp
         private/windows_crt/init_thread.cpp
+        public/core/span.h
     )
 
 else()  # GCC / Clang → Itanium ABI

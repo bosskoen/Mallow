@@ -107,7 +107,7 @@ namespace core
                 mlw_write(b, "ThreadError(create failed, os={})", os_code); 
             break;
             case DoubleStart:
-            mlw_write(b, "ThreadHandle already running");
+                b.append("ThreadHandle already running");
             break;
         }
     }

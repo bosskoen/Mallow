@@ -12,22 +12,28 @@
 namespace io
 {
     /// \brief Platform-agnostic handle for I/O operations.
-///
-/// Wraps the native handle type: a `void*` on Windows, an `int32` file
-/// descriptor on POSIX. The active member and constructor are selected by
-/// platform.
-struct Handle
-{
+    ///
+    /// Wraps the native handle type: a `void*` on Windows, an `int32` file
+    /// descriptor on POSIX. The active member and constructor are selected by
+    /// platform.
+    struct Handle
+    {
 #if defined(MLW_WINDOWS)
-    /// \brief Construct from a native Windows handle.
-    Handle(void* h) : fd(h) {}
-    /// \brief Native Windows handle.
-    void* fd;
+        /// \brief Construct from a native Windows handle.
+        constexpr Handle(void *h) : fd(h) {}
+        /// \brief Native Windows handle.
+        void *fd;
+        constexpr static Handle invalid() { return Handle((void *)(int64)-1); }
 #else
-    /// \brief Construct from a POSIX file descriptor.
-    Handle(int32 h) : fd(h) {}
-    /// \brief POSIX file descriptor.
-    int32 fd;
+        /// \brief Construct from a POSIX file descriptor.
+        constexpr Handle(int32 h) : fd(h) {}
+        /// \brief POSIX file descriptor.
+        int32 fd;
+        constexpr static Handle invalid() { return Handle(-1); }
 #endif
-};
-} // namespace core::io
+        bool isValid() const
+        {
+            return fd != invalid().fd;
+        }
+    };
+} // namespace io

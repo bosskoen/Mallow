@@ -11,7 +11,9 @@ target_link_libraries(Mallow
     PRIVATE
         core::core
         entry
-        stl
-
 )
 
+target_link_libraries(Mallow
+    PRIVATE
+        core::file_system
+        )

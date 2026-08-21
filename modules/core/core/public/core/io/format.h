@@ -112,8 +112,8 @@ namespace core
 
         public:
             char *ptr;        ///< Backing storage (owned).
-            index_t len;      ///< Number of characters currently written.
-            index_t capacity; ///< Allocated capacity in characters.
+            isize len;      ///< Number of characters currently written.
+            isize capacity; ///< Allocated capacity in characters.
 
             /// \brief Append a string, growing if needed.
             void append(const CStr &str);

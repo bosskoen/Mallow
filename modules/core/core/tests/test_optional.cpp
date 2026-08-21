@@ -251,8 +251,8 @@ namespace core_core_test
     // the format engine are linked.
     bool test_opt_format()
     {
-        auto eq = [](const char* got, index_t n, const char* exp) {
-            for (index_t i = 0; i < n; ++i) { if (!exp[i] || got[i] != exp[i]) return false; }
+        auto eq = [](const char* got, isize n, const char* exp) {
+            for (isize i = 0; i < n; ++i) { if (!exp[i] || got[i] != exp[i]) return false; }
             return exp[n] == '\0';
         };
         {

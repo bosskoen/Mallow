@@ -2,7 +2,7 @@
 #include "io/format.h"
 #include "libc/process.h"
 #include "io/terminal.h"
-#include "io/io.h"
+
 
 /// \file
 /// \brief Lightweight printing, panic and assert macros used across the freestanding core.
@@ -48,7 +48,7 @@
         constexpr bool _mlw_has_args = false __VA_OPT__(|| true);                                             \
         if constexpr (!_mlw_has_args && !(newline))  \
         {                                                                                                     \
-            io::writeHandle(handle, core::CStr(format_str));                                                  \
+            io::writeStringToHandle(handle, core::CStr(format_str));                                                  \
         }                                                                                                     \
         else                                                                                                  \
         {                                                                                                     \
@@ -57,7 +57,7 @@
             mlw_write(__format_write_buf, format_str, ##__VA_ARGS__);                                                        \
             if constexpr (newline)                                                                            \
                 __format_write_buf.append('\n');                                                                             \
-            io::writeHandle(handle, core::CStr(__format_write_buf.ptr, __format_write_buf.len));                                            \
+            io::writeStringToHandle(handle, core::CStr(__format_write_buf.ptr, __format_write_buf.len));                                            \
         }                                                                                                     \
     } while (0)
 

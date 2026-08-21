@@ -24,7 +24,7 @@ namespace core
         const char *ptr;
 
         /// \brief Length of the string in bytes, excluding any terminating NUL.
-        index_t len;
+        isize len;
 
         /// \brief Construct from a string literal or character array.
         ///
@@ -45,7 +45,7 @@ namespace core
         ///
         /// Use this when you already know the buffer length or when the
         /// string may contain embedded NULs.
-        MLW_FORCE_INLINE constexpr CStr(const char *ptr, index_t len) : ptr(ptr), len(len) {}
+        MLW_FORCE_INLINE constexpr CStr(const char *ptr, isize len) : ptr(ptr), len(len) {}
 
         /// \brief Create a `CStr` by measuring a null-terminated string at runtime.
         ///
@@ -55,7 +55,7 @@ namespace core
         /// \see mlwStrlen
         MLW_FORCE_INLINE static CStr fromPtr(const char *ptr)
         {
-            return CStr(ptr, static_cast<index_t>(mlwStrlen(ptr)));
+            return CStr(ptr, static_cast<isize>(mlwStrlen(ptr)));
         }
     };
 } // namespace core

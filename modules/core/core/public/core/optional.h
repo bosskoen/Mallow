@@ -316,9 +316,9 @@ namespace core
             requires core::FormattableValue<T, Buf>
         void format(Buf& buffer) const{
             if(isSome()){
-                mlw_write(buffer, "{}",  *ptr());
+                formatValue(buffer, *ptr());
             }else{
-                mlw_write(buffer, "None");
+                buffer.append("None");
             }
         }
     };
@@ -402,9 +402,9 @@ namespace core
             requires core::FormattableValue<T, Buf>
         void format(Buf& buffer) const{
             if(isSome()){
-                mlw_write(buffer, "{}",  *ptr);
+                formatValue(buffer, *ptr);
             }else{
-                mlw_write(buffer, "None");
+                buffer.append("None");
             }
         }
     };

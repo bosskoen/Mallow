@@ -34,7 +34,6 @@ Container library; the STL replacement.
 - [ ] make list sicrualr
 - [ ] make hashing containters
 - [ ] stress test stl
-- [ ] make vector smaller 40 -> 32 bytes
 - [ ] refrence stable unordered map or maby a uniqpointer stile thing
 - [ ] hashmap inserts doent move key
 
