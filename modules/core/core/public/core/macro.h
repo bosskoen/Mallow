@@ -167,7 +167,8 @@
         }                                                                     \
     } while (0)
 #else
-#define mlw_debug_assert_msg(cond, format_str, ...)
+#define mlw_debug_assert_msg(cond, format_str, ...) \
+    do { if (cond) {} } while (0)
 #endif // MLW_DEBUG
 
 // TODO

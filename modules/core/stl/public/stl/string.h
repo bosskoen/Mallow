@@ -4,10 +4,10 @@
 #include <core/c_string.h>
 #include <core/compilers.h>
 #include <core/macro.h>
-#include <core/libc/mem.h>                 // mlwMemcpy
+#include <core/libc/mem.h> // mlwMemcpy
 #include <core/memory/anonymous_allocator.h>
-#include <core/hash.h>                     // core::Hash primary + core::mix64 for Hash<String>
-                                           // (consider factoring those into a light core/hash.h)
+#include <core/hash.h> // core::Hash primary + core::mix64 for Hash<String>
+					   // (consider factoring those into a light core/hash.h)
 
 /// \file
 /// \brief Owning UTF-8-agnostic byte string with small-string optimization (SSO).
@@ -105,7 +105,7 @@ namespace core
 				u.s.space_left = static_cast<uint8>(SSO_CAP - n);
 				if (n < SSO_CAP)
 					u.s.buf[n] = '\0'; // in-bounds
-				// n == SSO_CAP: space_left == 0 IS the terminator at offset SSO_CAP
+									   // n == SSO_CAP: space_left == 0 IS the terminator at offset SSO_CAP
 			}
 		}
 
@@ -240,7 +240,7 @@ namespace core
 		isize len() const
 		{
 			return isLong() ? static_cast<isize>(u.l.len)
-							 : (SSO_CAP - static_cast<isize>(lastByte()));
+							: (SSO_CAP - static_cast<isize>(lastByte()));
 		}
 		bool isEmpty() const { return len() == 0; }
 
@@ -337,6 +337,11 @@ namespace core
 
 		bool operator==(const String &o) const { return bytesEqual(o.data(), o.len()); }
 		bool operator==(CStr sv) const { return bytesEqual(sv.ptr, static_cast<isize>(sv.len)); }
+
+		char *begin() { return data(); }
+		char *end() { return data() + len(); }
+		const char *begin() const { return data(); }
+		const char *end() const { return data() + len(); }
 
 	private:
 		bool bytesEqual(const char *p, isize n) const

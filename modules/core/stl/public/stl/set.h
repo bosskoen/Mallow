@@ -114,6 +114,21 @@ namespace core
         ConstIterator begin() const { return {map.begin()}; }
         ConstIterator end() const { return {map.end()}; }
 
+        struct Drainer
+        {
+            typename M::Drainer inner;
+            using Item = T;
+            explicit Drainer(M &&m) : inner(core::move(m)) {}
+            core::Optional<T> next()
+            {
+                core::Optional<M::Drainer::Item> e = inner.next();
+                if (!e)
+                    return {};
+                return core::Optional<T>{core::optional_in_place, core::move_if_movable((*e).key)};
+            }
+        };
+        Drainer drain() && { return Drainer(core::move(map)); }
+
         template <FormatBuffer Buffer>
             requires(FormattableValue<T, Buffer>)
         void format(Buffer &buffer) const

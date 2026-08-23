@@ -15,13 +15,16 @@ int32 mallowMain()
 		println("File contents: {}", contents);
 	})
 
-	core::Vector<core::CStr> v;
+	core::Vector<core::String> v;
 	for (int i = 0; i < 10; ++i){
 		v.push(core::CStr("x"));
 	}
 
-	auto range = itorator::range_for(itorator::borrow_iter(v)).begin().operator*();
-	for (const core::CStr &s : itorator::range_for(itorator::borrow_iter(v)))
+	core::move(v).drain();
+	//auto range = itorator::range_for(itorator::borrow_iter(v)).begin().operator*().clone();
+
+	//core::Vector<core::String> r = itorator::borrow_iter(v).collect<core::Vector<core::String>>();
+	for (const core::CStr &s : itorator::borrow_iter(v).range())
 	{
 		println("v: {}", s);
 	}

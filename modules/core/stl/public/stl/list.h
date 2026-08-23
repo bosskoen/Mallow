@@ -55,7 +55,7 @@ namespace core
         Node *head;   // First element in the list
         Node *tail;   // Last element in the list
         isize length; // Number of elements in the list
-        const AnonymousAllocator* allocator;
+        const AnonymousAllocator *allocator;
 
         /// \brief Create a new node with the given arguments.
         /// \warning Panics on allocation failure.
@@ -108,7 +108,7 @@ namespace core
         /// \brief Construct an empty list that allocates from \p alloc.
         /// \param alloc Allocator captured by value and used for the list's
         ///              lifetime.
-        explicit List(const AnonymousAllocator* alloc) : head(nullptr), tail(nullptr), length(0), allocator(alloc) {}
+        explicit List(const AnonymousAllocator *alloc) : head(nullptr), tail(nullptr), length(0), allocator(alloc) {}
 
         /// \brief Deleted: lists are not implicitly copyable.
         /// \see clone
@@ -188,13 +188,15 @@ namespace core
         /// \brief Element at index \p i, or None if out of range.
         Optional<T &> get(isize i)
         {
-            if (i < 0 || i >= length) return nullptr;
+            if (i < 0 || i >= length)
+                return nullptr;
             return Optional<T &>{getNode(i)->data};
         }
         /// \copydoc at()
         Optional<const T &> get(isize i) const
         {
-            if (i < 0 || i >= length) return nullptr;
+            if (i < 0 || i >= length)
+                return nullptr;
             return Optional<const T &>{getNode(i)->data};
         }
 
@@ -404,10 +406,28 @@ namespace core
             T &operator*() const { return node->data; }
             T *operator->() const { return &node->data; }
 
-            Iterator &operator++() { node = node->next; return *this; }
-            Iterator operator++(int) { Iterator tmp = *this; node = node->next; return tmp; }
-            Iterator &operator--() { node = node->prev; return *this; }
-            Iterator operator--(int) { Iterator tmp = *this; node = node->prev; return tmp; }
+            Iterator &operator++()
+            {
+                node = node->next;
+                return *this;
+            }
+            Iterator operator++(int)
+            {
+                Iterator tmp = *this;
+                node = node->next;
+                return tmp;
+            }
+            Iterator &operator--()
+            {
+                node = node->prev;
+                return *this;
+            }
+            Iterator operator--(int)
+            {
+                Iterator tmp = *this;
+                node = node->prev;
+                return tmp;
+            }
 
             bool operator==(const Iterator &o) const { return node == o.node; }
             bool operator!=(const Iterator &o) const { return node != o.node; }
@@ -426,10 +446,28 @@ namespace core
             const T &operator*() const { return node->data; }
             const T *operator->() const { return &node->data; }
 
-            ConstIterator &operator++() { node = node->next; return *this; }
-            ConstIterator operator++(int) { ConstIterator tmp = *this; node = node->next; return tmp; }
-            ConstIterator &operator--() { node = node->prev; return *this; }
-            ConstIterator operator--(int) { ConstIterator tmp = *this; node = node->prev; return tmp; }
+            ConstIterator &operator++()
+            {
+                node = node->next;
+                return *this;
+            }
+            ConstIterator operator++(int)
+            {
+                ConstIterator tmp = *this;
+                node = node->next;
+                return tmp;
+            }
+            ConstIterator &operator--()
+            {
+                node = node->prev;
+                return *this;
+            }
+            ConstIterator operator--(int)
+            {
+                ConstIterator tmp = *this;
+                node = node->prev;
+                return tmp;
+            }
 
             bool operator==(const ConstIterator &o) const { return node == o.node; }
             bool operator!=(const ConstIterator &o) const { return node != o.node; }
@@ -450,23 +488,49 @@ namespace core
         /// \brief Const iterator one past the last element.
         ConstIterator cend() const { return ConstIterator{nullptr}; }
 
-
-
         template <FormatBuffer Buffer>
-			requires(FormattableValue<T, Buffer>)
-		void format(Buffer &buffer) const
-		{
-			buffer.append('{');
-            Node* current = head;
-			for (isize i = 0; i < length; ++i)
-			{
-				if (i != 0)
-					buffer.append(CStr(", "));
-				detail::formatValue(buffer, current->data); // see below re: mlw_write vs formatValue
-                current= current->next;
-			}
-			buffer.append('}');
-		}
+            requires(FormattableValue<T, Buffer>)
+        void format(Buffer &buffer) const
+        {
+            buffer.append('{');
+            Node *current = head;
+            for (isize i = 0; i < length; ++i)
+            {
+                if (i != 0)
+                    buffer.append(CStr(", "));
+                detail::formatValue(buffer, current->data); // see below re: mlw_write vs formatValue
+                current = current->next;
+            }
+            buffer.append('}');
+        }
+
+        struct Drainer
+        {
+            List list; // OWNED — moved in (same trick as VecDrainer)
+            using Item = T;
+
+            explicit Drainer(List &&src) : list(core::move(src)) {}
+            Drainer(Drainer &&) = default;
+            Drainer(const Drainer &) = delete;
+
+            core::Optional<T> next()
+            {
+                if (list.head == nullptr)
+                    return {}; // exhausted
+                Node *node = list.head;
+
+                // unlink from the front
+                list.removeNode(node); // function to keep wrewrite work to a minimal
+
+                // move the element out, THEN free the node
+                core::Optional<T> out{core::optional_in_place, core::move_if_movable(node->data)};
+                list.destroyNode(node);
+                return out;
+            }
+
+        };
+
+        Drainer drain() && { return Drainer(core::move(*this)); }
 
     private:
         /// \brief Insert a new node at the head of the list.

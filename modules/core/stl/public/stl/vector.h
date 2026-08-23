@@ -56,7 +56,7 @@ namespace core
 		T *data;
 		isize length;
 		isize cap;
-		const AnonymousAllocator* allocator;
+		const AnonymousAllocator *allocator;
 
 		static constexpr isize INITIAL_CAP = 8;
 		static constexpr f32 GROWTH_FACTOR = 2.f;
@@ -72,7 +72,7 @@ namespace core
 			{
 				// memcpy-move is correct → let realloc fuse alloc+move (fast, in-place when possible)
 				void *p = allocator->realloc(allocator, data,
-											cap * (isize)sizeof(T), new_bytes, alignof(T));
+											 cap * (isize)sizeof(T), new_bytes, alignof(T));
 
 				mlw_debug_assert_msg(p != nullptr, "Vectro::grow failed to realloc");
 				data = static_cast<T *>(p);
@@ -107,7 +107,7 @@ namespace core
 		/// \brief Construct an empty vector that allocates from \p alloc.
 		/// \param alloc Allocator captured by value and used for the vector's
 		///              lifetime.
-		explicit Vector(const AnonymousAllocator* alloc) : data(nullptr), length(0), cap(0), allocator(alloc) {}
+		explicit Vector(const AnonymousAllocator *alloc) : data(nullptr), length(0), cap(0), allocator(alloc) {}
 
 		/// \brief Deleted: vectors are not implicitly copyable.
 		/// \see clone
@@ -220,7 +220,7 @@ namespace core
 			{
 				// memcpy-move is correct → let realloc fuse alloc+move (fast, in-place when possible)
 				void *p = allocator->realloc(allocator, data,
-											cap * (isize)sizeof(T), new_bytes, alignof(T));
+											 cap * (isize)sizeof(T), new_bytes, alignof(T));
 				if (!p)
 					return false;
 				data = static_cast<T *>(p);
@@ -275,7 +275,7 @@ namespace core
 			// shrink never relocates: same ptr back, no elements moved, regardless of T.
 			// realloc reclaims in place where it can (medium) and no-ops where it can't (small/OS).
 			allocator->realloc(allocator, data,
-							  cap * (isize)sizeof(T), length * (isize)sizeof(T), alignof(T));
+							   cap * (isize)sizeof(T), length * (isize)sizeof(T), alignof(T));
 			cap = length;
 		}
 
@@ -643,5 +643,28 @@ namespace core
 		const T *cbegin() const { return data; }
 		/// \brief Const iterator one past the last element.
 		const T *cend() const { return data + length; }
+
+		struct VecDrainer
+		{
+			Vector v; // OWNED — moved in, not a reference
+			isize index = 0;
+			using Item = T;
+
+			VecDrainer(Vector &&src) : v(core::move(src)), index(0) {}
+			VecDrainer(VecDrainer &&) = default;
+			VecDrainer(const VecDrainer &) = delete;
+
+			core::Optional<T> next()
+			{
+				if (index >= v.len())
+					return {}; // just stop — NO cleanup here
+				core::Optional<T> out{core::optional_in_place, core::move_if_movable(v.data()[index])};
+				++index;
+				return out;
+			}
+
+			// NO custom destructor needed — ~Vector runs automatically and does exactly the right thing
+		};
+		VecDrainer drain() && { return {core::move(*this)}; }
 	};
 }

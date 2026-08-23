@@ -805,6 +805,50 @@ namespace core
 		}
 		ConstIterator end() const { return ConstIterator{this, capacity}; }
 
+		struct Drainer
+		{
+			Map m; // OWNED — moved in
+			isize idx = 0;
+			using Item = Entry; // yields Entry BY VALUE (owned key + value)
+
+			explicit Drainer(Map &&src) : m(core::move(src)) { skipToFull(); }
+			Drainer(Drainer &&) = default;
+			Drainer(const Drainer &) = delete;
+
+			void skipToFull()
+			{
+				while (idx < m.capacity && !swiss::isFull(m.ctrl[idx]))
+					++idx;
+			}
+
+			core::Optional<Entry> next()
+			{
+				if (idx >= m.capacity)
+					return {}; // exhausted (capacity real slots)
+				Entry &slot = m.data[idx];
+
+				// move BOTH key and value out into a fresh owned Entry
+				core::Optional<Entry> out{core::optional_in_place,
+										  Entry{core::move_if_movable(slot.key),
+												core::move_if_movable(slot.value)}};
+
+				// the slot is now a husk — run its destructors and mark it dead so
+				// ~Map doesn't destroy it again
+				slot.key.~K();
+				slot.value.~V();
+				m.setCtrl(static_cast<usize>(idx), swiss::DELETED); // or EMPTY; see below
+				--m.size;
+
+				++idx;
+				skipToFull();
+				return out;
+			}
+
+			// no custom dtor: ~Map frees the block AND destroys any slots still marked full
+		};
+
+		Drainer drain() && { return Drainer(core::move(*this)); }
+
 		template <FormatBuffer Buffer>
 			requires(FormattableValue<K, Buffer> && FormattableValue<V, Buffer>)
 		void format(Buffer &buffer) const
