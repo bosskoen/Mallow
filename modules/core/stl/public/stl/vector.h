@@ -658,7 +658,7 @@ namespace core
 			{
 				if (index >= v.len())
 					return {}; // just stop — NO cleanup here
-				core::Optional<T> out{core::optional_in_place, core::move_if_movable(v.data()[index])};
+				core::Optional<T> out{core::optional_in_place, core::move_if_movable(v.data[index])};
 				++index;
 				return out;
 			}

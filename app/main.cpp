@@ -9,6 +9,7 @@
 
 int32 mallowMain()
 {
+	fs::File::open(core::CStr("test.txt"), io::OpenMode::Append);
 	if_ok(file, fs::File::open(core::CStr("test.txt"), io::OpenMode::ReadWrite), {
 		file.write(core::asBytes(core::CStr("Hello, world!\n")));
 		core::Vector<uint8> contents = file.readAll().takeValue();
@@ -20,7 +21,7 @@ int32 mallowMain()
 		v.push(core::CStr("x"));
 	}
 
-	core::move(v).drain();
+	//core::move(v).drain();
 	//auto range = itorator::range_for(itorator::borrow_iter(v)).begin().operator*().clone();
 
 	//core::Vector<core::String> r = itorator::borrow_iter(v).collect<core::Vector<core::String>>();

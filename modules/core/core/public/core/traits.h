@@ -39,6 +39,10 @@ namespace core
     template <typename T>
     typename add_rvalue_reference<T>::type declval() noexcept;
 
+    template <bool B, class T, class F> struct conditional { using type = T; };
+    template <class T, class F> struct conditional<false, T, F> { using type = F; };
+    template <bool B, class T, class F> using conditional_t = typename conditional<B, T, F>::type;
+
     // ----- is_same -----
     template <typename A, typename B> struct is_same : false_type {};
     template <typename A> struct is_same<A, A> : true_type {};
