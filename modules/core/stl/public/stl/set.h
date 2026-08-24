@@ -121,7 +121,7 @@ namespace core
             explicit Drainer(M &&m) : inner(core::move(m)) {}
             core::Optional<T> next()
             {
-                core::Optional<M::Drainer::Item> e = inner.next();
+                core::Optional<typename M::Drainer::Item> e = inner.next();
                 if (!e)
                     return {};
                 return core::Optional<T>{core::optional_in_place, core::move_if_movable((*e).key)};

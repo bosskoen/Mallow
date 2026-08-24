@@ -70,6 +70,7 @@ namespace {   // file-local error mappers
             case OpenMode::Write:     access = GENERIC_WRITE;                disp = CREATE_ALWAYS; break;
             case OpenMode::Append:    access = FILE_APPEND_DATA;             disp = OPEN_ALWAYS;   break;
             case OpenMode::ReadWrite: access = GENERIC_READ|GENERIC_WRITE;   disp = OPEN_EXISTING; break;
+            default:                  return core::Err{ IoError{ IoError::Kind::Other, 0 } };
         }
         HANDLE h = CreateFileW(wpath, access, FILE_SHARE_READ, nullptr, disp, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (h == INVALID_HANDLE_VALUE) return core::Err{ lastError() };
@@ -81,12 +82,13 @@ namespace {   // file-local error mappers
         for (index_t i = 0; i < path.len; ++i) buf[i] = path.ptr[i];
         buf[path.len] = '\0';
 
-        long flags;
+        long flags = O_RDONLY;
         switch (mode) {
             case OpenMode::Read:      flags = O_RDONLY;                    break;
             case OpenMode::Write:     flags = O_WRONLY | O_CREAT | O_TRUNC;  break;
             case OpenMode::Append:    flags = O_WRONLY | O_CREAT | O_APPEND; break;
             case OpenMode::ReadWrite: flags = O_RDWR;                     break;
+            default:                  return core::Err{ IoError{ IoError::Kind::Other, 0 } };
         }
         long r = syscall(SYS_OPENAT, AT_FDCWD, (long)buf, flags, 0644);
         if (r < 0) return core::Err{ fromErrno(-r) };

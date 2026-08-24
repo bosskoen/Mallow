@@ -74,6 +74,8 @@ namespace core
             allocator->realloc(allocator, node, sizeof(Node), 0, alignof(Node));
         }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waggressive-loop-optimizations"
         /// \brief Get the node at index \p i.
         /// \pre `0 <= i < length`.
         Node *getNode(isize i) const
@@ -98,6 +100,7 @@ namespace core
                 return current;
             }
         }
+#pragma GCC diagnostic pop
 
     public:
         // -- lifetime -----------------------------------------------------
