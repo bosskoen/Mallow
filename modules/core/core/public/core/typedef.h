@@ -72,6 +72,8 @@ using iptr = isize; ///< signed poiter-wide integer
 
 using alignment_t = f64; ///< type with the strictest fundamental alignment; used as max-aligned storage
 
+struct unit{};
+
 namespace core
 {
     /// \brief Compile-time numeric properties of an arithmetic type.

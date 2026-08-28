@@ -29,7 +29,7 @@ namespace core
         constexpr Span  last (isize n) const { return Span(ptr + (len - n), n); }
 
         constexpr operator CStr() const requires same_as<remove_cv_t<T>, char>
-        { return CStr(ptr, static_cast<index_t>(len)); }
+        { return CStr(ptr, len); }
 
         constexpr T*       begin()       { return ptr; }
         constexpr T*       end()         { return ptr + len; }

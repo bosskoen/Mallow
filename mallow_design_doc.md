@@ -15,6 +15,7 @@ Mallow's libc + runtime: types, traits, libm, allocation (galloc), printing / io
 threading, CRT bootstrap.
 - [ ] finish filling out the surface over time when needed
 - [ ] add a exit thread function
+- [ ] sleep
 - [ ] look into printing argument count valedation
 - [ ] add format option i.e. print to hex, print with presision
 - [ ] add thread hangup function

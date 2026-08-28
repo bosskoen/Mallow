@@ -7,6 +7,7 @@
 #include <iter/iterator.h>
 #include <stl/string.h>
 
+#include <iter/lines.h>
 int32 mallowMain()
 {
 	fs::File::open(core::CStr("test.txt"), io::OpenMode::Append);

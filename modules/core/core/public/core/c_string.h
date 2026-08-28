@@ -57,5 +57,6 @@ namespace core
         {
             return CStr(ptr, static_cast<isize>(mlwStrlen(ptr)));
         }
+        char operator[](isize index) { return ptr[index]; }
     };
 } // namespace core

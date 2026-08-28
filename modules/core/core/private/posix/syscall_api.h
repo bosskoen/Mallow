@@ -8,12 +8,16 @@
 
 #if defined(MLW_X64)
 
-enum
+enum : long
 {
     SYS_READ = 0,
     SYS_WRITE = 1,
     SYS_CLOSE = 3,
     SYS_OPENAT = 257,
+    SYS_LSEEK = 8,
+    SYS_FSYNC = 74,
+    SYS_FTRUNCATE = 77,
+    SYS_STATX = 332,
 
     SYS_MMAP = 9,
     SYS_MPROTECT = 10,
@@ -192,12 +196,18 @@ inline long clone(int (*fn)(void *), void *stack_top, long flags,
 
 #elif defined(MLW_X86)
 
-enum
+enum : long
 {
     SYS_READ = 3,
     SYS_WRITE = 4,
     SYS_CLOSE = 6,
     SYS_OPENAT = 295,
+    SYS_LSEEK = 19,
+    SYS_FSYNC = 118,
+    SYS_FTRUNCATE = 93,
+    SYS_LLSEEK = 140,
+    SYS_FTRUNCATE64 = 194,
+    SYS_STATX = 383,
 
     SYS_MMAP2 = 192,
     SYS_MPROTECT = 125,
@@ -365,12 +375,18 @@ inline long clone(int (*fn)(void *), void *stack_top, long flags,
 
 #elif defined(MLW_ARM32)
 
-enum
+enum : long
 {
     SYS_READ = 3,
     SYS_WRITE = 4,
     SYS_CLOSE = 6,
     SYS_OPENAT = 322,
+    SYS_LSEEK = 19,
+    SYS_FSYNC = 118,
+    SYS_FTRUNCATE = 93,
+    SYS_LLSEEK = 140,
+    SYS_FTRUNCATE64 = 194,
+    SYS_STATX = 397
 
     SYS_MMAP2 = 192,
     SYS_MPROTECT = 125,
@@ -540,12 +556,16 @@ inline long clone(int (*fn)(void *), void *stack_top, long flags,
 
 #elif defined(MLW_ARM64)
 
-enum
+enum : long
 {
     SYS_READ = 63,
     SYS_WRITE = 64,
     SYS_CLOSE = 57,
     SYS_OPENAT = 56,
+    SYS_LSEEK = 62,
+    SYS_FSYNC = 82,
+    SYS_FTRUNCATE = 46,
+    SYS_STATX = 291,
 
     SYS_MMAP = 222,
     SYS_MPROTECT = 226,
@@ -768,7 +788,6 @@ inline long clone(int (*fn)(void *), void *stack_top, long flags,
 #define CLONE_PARENT_SETTID 0x00100000
 #define CLONE_CHILD_CLEARTID 0x00200000
 
-
 static constexpr long AT_FDCWD = -100;
 
 static inline int is_err(long r) { return r < 0 && r > -4096; }
@@ -833,6 +852,55 @@ struct timespec
 {
     long tv_sec;  // whole seconds
     long tv_nsec; // nanoseconds (0 .. 999,999,999)
+};
+
+struct Statx
+{
+    uint32 mask;                   //   0
+    uint32 blksize;                //   4
+    uint64 attributes;             //   8
+    uint32 nlink;                  //  16
+    uint32 uid;                    //  20
+    uint32 gid;                    //  24
+    uint16 mode;                   //  28
+    uint16 _spare0;                //  30
+    uint64 ino;                    //  32
+    uint64 size;                   //  40  <-- the field we want
+    uint64 blocks;                 //  48
+    uint64 attributes_mask;        //  56
+    StatxTimestamp atime;          //  64
+    StatxTimestamp btime;          //  80  (creation time — Milestone 3 freebie)
+    StatxTimestamp ctime;          //  96
+    StatxTimestamp mtime;          // 112
+    uint32 rdev_major, rdev_minor; // 128
+    uint32 dev_major, dev_minor;   // 136
+    uint64 mnt_id;                 // 144
+    uint64 _spare2;                // 152
+    uint64 _spare3[12];            // 160 .. 256
+};
+
+static_assert(sizeof(Statx) == 256, "statx ABI is a fixed 256 bytes");
+
+enum : long
+{
+    AT_EMPTY_PATH = 0x1000,
+    AT_SYMLINK_NOFOLLOW = 0x100
+};
+enum : uint32
+{
+    STATX_SIZE = 0x0200,
+    STATX_BASIC_STATS = 0x07ff
+};
+// Linux x86-64 open flags (octal in the kernel ABI)
+enum : long
+{
+    O_RDONLY = 0,
+    O_WRONLY = 1,
+    O_RDWR = 2,
+    O_CREAT = 0100,
+    O_TRUNC = 01000,
+    O_APPEND = 02000,
+    O_EXCL=0200,
 };
 
 #elif defined(MLW_MAC)

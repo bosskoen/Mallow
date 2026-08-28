@@ -3,11 +3,12 @@
 add_library(iterators INTERFACE)
 add_library(core::iterators ALIAS iterators)
 
-target_link_libraries(iterators INTERFACE core::core)
+target_link_libraries(iterators INTERFACE core::core core::stl)
 
 target_sources(iterators
     PRIVATE
         public/iter/iterator.h
+        public/iter/lines.h
 )
 
 target_include_directories(iterators INTERFACE
