@@ -90,6 +90,8 @@ namespace fs
         }
         core::Result<int64, io::IoError> size() { return io::fileSize(handle); }
 
+        core::Result<io::Metadata, io::IoError> metadata() { return io::statHandle(handle); }
+
         // size() as above
         // sync
         // ofsets /trucation
@@ -98,6 +100,34 @@ namespace fs
 
         class FileDrain drain() &&;
     };
+
+    // fs free functions
+    MLW_FORCE_INLINE core::Result<io::Metadata, io::IoError> metadata(core::CStr p) { return io::statPath(p, true); }
+    MLW_FORCE_INLINE core::Result<io::Metadata, io::IoError> symlinkMetadata(core::CStr p) { return io::statPath(p, false); }
+
+    MLW_FORCE_INLINE core::Result<bool, io::IoError> exists(core::CStr path)
+    {
+        core::Result<io::Metadata, io::IoError> r = io::statPath(path, true);
+        if (r.isErr())
+        {
+            if (r.error().kind == io::IoError::Kind::NotFound)
+                return core::Ok{false};
+            return core::Err{r.takeError()};
+        }
+        return core::Ok{true};
+    }
+
+    MLW_FORCE_INLINE core::Result<bool, io::IoError> isFile(core::CStr path)
+    {
+        core::Result<io::Metadata, io::IoError> r = io::statPath(path, true);
+        if (r.isErr())
+        {
+            if (r.error().kind == io::IoError::Kind::NotFound)
+                return core::Ok{false};
+            return core::Err{r.takeError()};
+        }
+        return core::Ok{r.value().isFile()};
+    }
 
     class FileDrain
     {
@@ -136,4 +166,49 @@ namespace fs
     };
 
     MLW_FORCE_INLINE FileDrain File::drain() && { return FileDrain{core::move(*this)}; }
+
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> removeFile(core::CStr p) { return io::removePath(p); }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> removeDir(core::CStr p) { return io::removeDirPath(p); }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> createDir(core::CStr p) { return io::makeDir(p, 0755); }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> rename(core::CStr a, core::CStr b) { return io::renamePath(a, b); }
+
+    core::Result<unit, io::IoError> createDirAll(core::CStr path);
+
+    core::Result<int64, io::IoError> copy(core::CStr from, core::CStr to);
+
+    MLW_FORCE_INLINE core::Result<core::Vector<uint8>, io::IoError> readToBytes(core::CStr path)
+    {
+        core::Result<File, io::IoError> r = File::open(path, io::OpenMode::Read);
+        if (r.isErr())
+            return core::Err{r.takeError()};
+        File f = r.takeValue();
+        return f.readAll();
+    }
+    MLW_FORCE_INLINE core::Result<core::String, io::IoError> readToString(core::CStr path)
+    {
+        core::Result<File, io::IoError> r = File::open(path, io::OpenMode::Read);
+        if (r.isErr())
+            return core::Err{r.takeError()};
+        File f = r.takeValue();
+        return f.readText();
+    }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> writeBytes(core::CStr path, core::Span<const uint8> data)
+    {
+        core::Result<File, io::IoError> r = File::open(path, io::OpenMode::Write);
+        if (r.isErr())
+            return core::Err{r.takeError()};
+        File f = r.takeValue();
+        return f.writeAll(data);
+    }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> appendBytes(core::CStr path, core::Span<const uint8> data)
+    {
+        core::Result<File, io::IoError> r = File::open(path, io::OpenMode::Append);
+        if (r.isErr())
+            return core::Err{r.takeError()};
+        File f = r.takeValue();
+        return f.writeAll(data);
+    }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError>
+    setPermissions(core::CStr p, int32 mode) { return io::setPermissions(p, mode); }
+
 } // namespace fs

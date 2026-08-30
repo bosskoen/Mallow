@@ -58,6 +58,48 @@ namespace io
                 return {IoError::Kind::Other, (isize)e};
             }
         }
+
+        SystemTime fromFiletime(FILETIME ft)
+        {
+            uint64 ticks = ((uint64)ft.dwHighDateTime << 32) | ft.dwLowDateTime; // 100ns since 1601
+            const uint64 EPOCH_DIFF = 116444736000000000ull;                     // 100ns units between 1601 and 1970
+            if (ticks < EPOCH_DIFF)
+                return {0, 0}; // clamp pre-1970 (rare)
+            uint64 rel = ticks - EPOCH_DIFF;
+            return {(int64)(rel / 10000000ull), (uint32)((rel % 10000000ull) * 100)};
+        }
+        FileType winType(DWORD a)
+        {
+            if (a & FILE_ATTRIBUTE_REPARSE_POINT)
+                return FileType::Symlink; // approx, see gotcha #3
+            if (a & FILE_ATTRIBUTE_DIRECTORY)
+                return FileType::Dir;
+            return FileType::File;
+        }
+        Metadata fromWinInfo(DWORD attrs, DWORD hi, DWORD lo,
+                             FILETIME at, FILETIME wt, FILETIME ct)
+        {
+            Metadata m;
+            m.size = ((int64)hi << 32) | lo;
+            m.type = winType(attrs);
+            uint16 mode = (attrs & FILE_ATTRIBUTE_READONLY) ? 0444 : 0666; // synthesized
+            if (m.type == FileType::Dir)
+                mode |= 0111;
+            m.mode = mode;
+            m.accessed = fromFiletime(at);
+            m.modified = fromFiletime(wt);
+            m.created = fromFiletime(ct);
+            m.hasCreated = true; // Windows always records creation time
+            return m;
+        }
+
+        int toWPath(core::CStr p, wchar_t (&w)[4096])
+        {
+            int wl = MultiByteToWideChar(CP_UTF8, 0, p.ptr, (int)p.len, w, 4095);
+            w[wl] = L'\0';
+            return wl;
+        }
+
 #else
         IoError fromErrno(long e)
         { // syscalls return -errno
@@ -79,12 +121,59 @@ namespace io
                 return {IoError::Kind::BrokenPipe, e}; // EPIPE
             case 9:
                 return {IoError::Kind::InvalidHandle, e}; // EBADF
-            case 22: return { IoError::Kind::InvalidInput, e };
+            case 22:
+                return {IoError::Kind::InvalidInput, e};
+            case 38:
+                return { IoError::Kind::Unsupported, e };
+            case 20:
+                return {IoError::Kind::NotADirectory, e};
+            case 39:
+                return {IoError::Kind::DirectoryNotEmpty, e};
             default:
                 return {IoError::Kind::Other, e};
             }
         }
 
+        FileType typeFromMode(uint16 mode)
+        {
+            switch (mode & S_IFMT)
+            {
+            case S_IFREG:
+                return FileType::File;
+            case S_IFDIR:
+                return FileType::Dir;
+            case S_IFLNK:
+                return FileType::Symlink;
+            default:
+                return FileType::Other; // device/fifo/socket
+            }
+        }
+
+        Metadata fromStatx(const Statx &st)
+        {
+            Metadata m;
+            m.size = (int64)st.size;
+            m.mode = st.mode;
+            m.type = typeFromMode(st.mode);
+            m.accessed = {st.atime.sec, st.atime.nsec};
+            m.modified = {st.mtime.sec, st.mtime.nsec};
+            m.hasCreated = (st.mask & STATX_BTIME) != 0; // trust the returned mask, not the request
+            m.created = m.hasCreated ? SystemTime{st.btime.sec, st.btime.nsec}
+                                     : SystemTime{0, 0};
+            return m;
+        }
+
+
+
+        bool toCPath(core::CStr path, char (&buf)[4096])
+        {
+            if (path.len >= (index_t)sizeof(buf))
+                return false;
+            for (index_t i = 0; i < path.len; ++i)
+                buf[i] = path.ptr[i];
+            buf[path.len] = '\0';
+            return true;
+        }
 #endif
         IoError invalidInput() { return {IoError::Kind::InvalidInput, 22}; } // EINVAL
     } // anonymous
@@ -187,15 +276,25 @@ namespace io
 
     core::Result<Handle, IoError> openFile(core::CStr path, OpenMode mode)
     {
-    OpenOptions o;
-    switch (mode) {
-        case OpenMode::Read:      o.read(true);                               break;
-        case OpenMode::Write:     o.write(true).create(true).truncate(true);  break;
-        case OpenMode::Append:    o.append(true).create(true);                break;
-        case OpenMode::ReadWrite: o.read(true).write(true);                   break;
-        default:                  return core::Err{ invalidInput() };
-    }
-    return openFile(path, o);
+        OpenOptions o;
+        switch (mode)
+        {
+        case OpenMode::Read:
+            o.read(true);
+            break;
+        case OpenMode::Write:
+            o.write(true).create(true).truncate(true);
+            break;
+        case OpenMode::Append:
+            o.append(true).create(true);
+            break;
+        case OpenMode::ReadWrite:
+            o.read(true).write(true);
+            break;
+        default:
+            return core::Err{invalidInput()};
+        }
+        return openFile(path, o);
     }
 
     core::Result<isize, IoError> writeFile(Handle handle, core::Span<const uint8> data)
@@ -261,13 +360,13 @@ namespace io
         if (!SetFilePointerEx(handle.fd, dist, &out, method))
             return core::Err{lastError()};
         return core::Ok{(int64)out.QuadPart};
-#elif defined(__x86_64__) || defined(__aarch64__)
+#elif defined(MLW_X64) || defined(MLW_ARM64)
         // native 64-bit lseek; `long` is 64-bit here. seek never blocks → no retry.
         long r = syscall(SYS_LSEEK, (long)handle.fd, (long)offset, w);
         if (r < 0)
             return core::Err{fromErrno(-r)};
         return core::Ok{(int64)r};
-#else // i386 / arm: _llseek(fd, off_high, off_low, loff_t* result, whence)
+#else // MLW_X86 / MLW_ARM32: _llseek(fd, off_high, off_low, loff_t* result, whence)
         int64 result = 0;
         long r = syscall(SYS_LLSEEK, (long)handle.fd,
                          (long)(uint32)((uint64)offset >> 32), // high 32 bits
@@ -310,12 +409,12 @@ namespace io
         if (!ok)
             return core::Err{lastError()};
         return core::Ok{unit{}};
-#elif defined(__x86_64__) || defined(__aarch64__)
+#elif defined(MLW_X64) || defined(MLW_ARM64)
         long r = retrySyscall(SYS_FTRUNCATE, (long)handle.fd, (long)len, 0);
         if (r < 0)
             return core::Err{fromErrno(-r)};
         return core::Ok{unit{}};
-#elif defined(__i386__)
+#elif defined(MLW_X86)
         // ftruncate64(fd, low, high) — LE split, no padding on i386
         long r = retrySyscall(SYS_FTRUNCATE64, (long)handle.fd,
                               (long)(uint32)(uint64)len,
@@ -323,7 +422,7 @@ namespace io
         if (r < 0)
             return core::Err{fromErrno(-r)};
         return core::Ok{unit{}};
-#else // __arm__ : 64-bit arg needs an even-aligned register pair → r1 is padding
+#else // MLW_ARM32 : 64-bit arg needs an even-aligned register pair → r1 is padding
         long r = retrySyscall(SYS_FTRUNCATE64, (long)handle.fd,
                               0,                                  // pad (r1 unused)
                               (long)(uint32)(uint64)len,          // low  (r2)
@@ -372,4 +471,160 @@ namespace io
 #endif
     }
 
+    core::Result<Metadata, IoError> statHandle(Handle handle)
+    {
+#if defined(MLW_WINDOWS)
+        BY_HANDLE_FILE_INFORMATION info;
+        if (!GetFileInformationByHandle(handle.fd, &info))
+            return core::Err{lastError()};
+        return core::Ok{fromWinInfo(info.dwFileAttributes,
+                                    info.nFileSizeHigh, info.nFileSizeLow,
+                                    info.ftLastAccessTime, info.ftLastWriteTime,
+                                    info.ftCreationTime)};
+#else
+        Statx st;
+        // AT_EMPTY_PATH + "" makes statx operate on the fd itself (the fstat form).
+        long r = syscall(SYS_STATX, (long)handle.fd, (long)"", AT_EMPTY_PATH,
+                         (long)(STATX_BASIC_STATS | STATX_BTIME), (long)&st);
+        if (r == -38 /*ENOSYS*/)
+            return core::Err{IoError{IoError::Kind::Unsupported, 38}};
+        if (r < 0)
+            return core::Err{fromErrno(-r)};
+        return core::Ok{fromStatx(st)};
+#endif
+    }
+
+    core::Result<Metadata, IoError> statPath(core::CStr path, bool follow)
+    {
+#if defined(MLW_WINDOWS)
+        wchar_t wpath[4096];
+        int wl = MultiByteToWideChar(CP_UTF8, 0, path.ptr, (int)path.len, wpath, 4095);
+        wpath[wl] = L'\0';
+        (void)follow; // see gotcha #3 — Windows always follows here in v1
+        WIN32_FILE_ATTRIBUTE_DATA d;
+        if (!GetFileAttributesExW(wpath, GetFileExInfoStandard, &d))
+            return core::Err{lastError()};
+        return core::Ok{fromWinInfo(d.dwFileAttributes, d.nFileSizeHigh, d.nFileSizeLow,
+                                    d.ftLastAccessTime, d.ftLastWriteTime, d.ftCreationTime)};
+#else
+        char buf[4096];
+        if (!toCPath(path, buf))
+            return core::Err{invalidInput()};
+        long flags = follow ? 0 : AT_SYMLINK_NOFOLLOW;
+        Statx st;
+        long r = syscall(SYS_STATX, AT_FDCWD, (long)buf, flags,
+                         (long)(STATX_BASIC_STATS | STATX_BTIME), (long)&st);
+        if (r == -38)
+            return core::Err{IoError{IoError::Kind::Unsupported, 38}};
+        if (r < 0)
+            return core::Err{fromErrno(-r)};
+        return core::Ok{fromStatx(st)};
+#endif
+    }
+
+    core::Result<unit, IoError> removePath(core::CStr path)
+    { // file
+#if defined(MLW_WINDOWS)
+        wchar_t w[4096];
+        toWPath(path, w);
+        if (!DeleteFileW(w))
+            return core::Err{lastError()};
+#else
+        char buf[4096];
+        if (!toCPath(path, buf))
+            return core::Err{invalidInput()};
+        long r = retrySyscall(SYS_UNLINKAT, AT_FDCWD, (long)buf, 0);
+        if (r < 0)
+            return core::Err{fromErrno(-r)};
+#endif
+        return core::Ok{unit{}};
+    }
+
+    core::Result<unit, IoError> removeDirPath(core::CStr path)
+    { // empty dir
+#if defined(MLW_WINDOWS)
+        wchar_t w[4096];
+        toWPath(path, w);
+        if (!RemoveDirectoryW(w))
+            return core::Err{lastError()};
+#else
+        char buf[4096];
+        if (!toCPath(path, buf))
+            return core::Err{invalidInput()};
+        long r = retrySyscall(SYS_UNLINKAT, AT_FDCWD, (long)buf, AT_REMOVEDIR);
+        if (r < 0)
+            return core::Err{fromErrno(-r)};
+#endif
+        return core::Ok{unit{}};
+    }
+
+    core::Result<unit, IoError> makeDir(core::CStr path, int32 mode)
+    {
+#if defined(MLW_WINDOWS)
+        wchar_t w[4096];
+        toWPath(path, w);
+        (void)mode; // Windows dirs get default ACLs
+        if (!CreateDirectoryW(w, nullptr))
+            return core::Err{lastError()};
+#else
+        char buf[4096];
+        if (!toCPath(path, buf))
+            return core::Err{invalidInput()};
+        long r = retrySyscall(SYS_MKDIRAT, AT_FDCWD, (long)buf, (long)mode);
+        if (r < 0)
+            return core::Err{fromErrno(-r)};
+#endif
+        return core::Ok{unit{}};
+    }
+
+    core::Result<unit, IoError> renamePath(core::CStr from, core::CStr to)
+    {
+#if defined(MLW_WINDOWS)
+        wchar_t wf[4096], wt[4096];
+        toWPath(from, wf);
+        toWPath(to, wt);
+        // MOVEFILE_REPLACE_EXISTING matches POSIX (which silently replaces an existing file)
+        if (!MoveFileExW(wf, wt, MOVEFILE_REPLACE_EXISTING))
+            return core::Err{lastError()};
+        return core::Ok{unit{}};
+#else
+        char bf[4096], bt[4096];
+        if (!toCPath(from, bf) || !toCPath(to, bt))
+            return core::Err{invalidInput()};
+#if defined(MLW_ARM64)
+        long r = syscall(SYS_RENAMEAT2, AT_FDCWD, (long)bf, AT_FDCWD, (long)bt, 0); // flags=0
+#else
+        long r = syscall(SYS_RENAMEAT, AT_FDCWD, (long)bf, AT_FDCWD, (long)bt);
+#endif
+        if (r < 0)
+            return core::Err{fromErrno(-r)};
+        return core::Ok{unit{}};
+#endif
+    }
+
+    core::Result<unit, IoError> setPermissions(core::CStr path, int32 mode)
+    {
+#if defined(MLW_WINDOWS)
+        wchar_t w[4096];
+        toWPath(path, w);
+        DWORD attrs = GetFileAttributesW(w);
+        if (attrs == INVALID_FILE_ATTRIBUTES)
+            return core::Err{lastError()};
+        if (mode & 0222)
+            attrs &= ~FILE_ATTRIBUTE_READONLY;
+        else
+            attrs |= FILE_ATTRIBUTE_READONLY;
+        if (!SetFileAttributesW(w, attrs))
+            return core::Err{lastError()};
+        return core::Ok{unit{}};
+#else
+        char buf[4096];
+        if (!toCPath(path, buf))
+            return core::Err{invalidInput()};
+        long r = retrySyscall(SYS_FCHMODAT, AT_FDCWD, (long)buf, (long)mode, 0); // 4-arg (last is flags=0, see note)
+        if (r < 0)
+            return core::Err{fromErrno(-r)};
+        return core::Ok{unit{}};
+#endif
+    }
 }

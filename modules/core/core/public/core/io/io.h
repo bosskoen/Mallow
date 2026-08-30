@@ -36,7 +36,10 @@ namespace io
             UnexpectedEof,
             WriteZero,
             InvalidInput,
-            Other, // catch-all; carries the raw errno/GetLastError below
+            Unsupported,
+            NotADirectory,     // a path component isn't a directory (ENOTDIR)
+            DirectoryNotEmpty, // rmdir on a non-empty dir (ENOTEMPTY)
+            Other,             // catch-all; carries the raw errno/GetLastError below
         } kind;
         isize os_code; ///< errno or GetLastError() captured at the failure site
 
@@ -75,7 +78,18 @@ namespace io
             case Kind::WriteZero:
                 b.append("Write zero bytes");
                 break;
-                case Kind::InvalidInput: b.append("Invalid input"); break;
+            case Kind::InvalidInput:
+                b.append("Invalid input");
+                break;
+            case Kind::Unsupported:
+                b.append("Operation not supported");
+                break;
+            case Kind::NotADirectory:
+                b.append("Not a directory");
+                break;
+            case Kind::DirectoryNotEmpty:
+                b.append("Directory not empty");
+                break;
             case Kind::Other:
                 mlw_write(b, "I/O error (os={})", os_code);
                 break;
@@ -92,18 +106,82 @@ namespace io
         bool createNew_ = false;
         int32 mode_ = 0644; // POSIX permission bits, applied only when a file is created
 
-        OpenOptions& read(bool v)      { read_ = v;      return *this; }
-        OpenOptions& write(bool v)     { write_ = v;     return *this; }
-        OpenOptions& append(bool v)    { append_ = v;    return *this; }
-        OpenOptions& truncate(bool v)  { truncate_ = v;  return *this; }
-        OpenOptions& create(bool v)    { create_ = v;    return *this; }
-        OpenOptions& createNew(bool v) { createNew_ = v; return *this; }
-        OpenOptions& mode(int32 m)     { mode_ = m;      return *this; }
+        OpenOptions &read(bool v)
+        {
+            read_ = v;
+            return *this;
+        }
+        OpenOptions &write(bool v)
+        {
+            write_ = v;
+            return *this;
+        }
+        OpenOptions &append(bool v)
+        {
+            append_ = v;
+            return *this;
+        }
+        OpenOptions &truncate(bool v)
+        {
+            truncate_ = v;
+            return *this;
+        }
+        OpenOptions &create(bool v)
+        {
+            create_ = v;
+            return *this;
+        }
+        OpenOptions &createNew(bool v)
+        {
+            createNew_ = v;
+            return *this;
+        }
+        OpenOptions &mode(int32 m)
+        {
+            mode_ = m;
+            return *this;
+        }
     };
+
+    enum class FileType
+    {
+        File,
+        Dir,
+        Symlink,
+        Other
+    };
+
+    /// Wall-clock time as seconds + nanoseconds since the Unix epoch.
+    /// One representation for both platforms — Windows FILETIME is converted
+    /// at the boundary so callers never see the 1601 epoch.
+    struct SystemTime
+    {
+        int64 sec;
+        uint32 nsec;
+    };
+
+    struct Metadata
+    {
+        int64 size; // bytes
+        FileType type;
+        uint16 mode; // POSIX type+perm bits; synthesized on Windows
+        SystemTime accessed;
+        SystemTime modified;
+        SystemTime created; // valid only if hasCreated
+        bool hasCreated;    // Linux btime is filesystem-dependent; Windows always true
+
+        bool isFile() const { return type == FileType::File; }
+        bool isDir() const { return type == FileType::Dir; }
+        bool isSymlink() const { return type == FileType::Symlink; }
+        uint16 permissions() const { return mode & 0777; }     // rwx bits
+        bool isReadonly() const { return (mode & 0222) == 0; } // no write bit set
+    };
+
+    core::Result<Metadata, IoError> statHandle(Handle handle);              // by open fd
+    core::Result<Metadata, IoError> statPath(core::CStr path, bool follow); // by path
 
     core::Result<Handle, IoError> openFile(core::CStr path, const OpenOptions &opts);
     core::Result<Handle, IoError> openFile(core::CStr path, OpenMode mode); // preset, see below
-    core::Result<Handle, IoError> openFile(core::CStr path, OpenMode mode);
 
     core::Result<isize, IoError> writeFile(Handle handle, core::Span<const uint8> data);
 
@@ -117,11 +195,15 @@ namespace io
         Current = 1,
         End = 2
     };
-    core::Result<int64, IoError> seekFile(Handle handle, SeekFrom whence, isize offset);
+    core::Result<int64, IoError> seekFile(Handle handle, SeekFrom whence, int64 offset);
 
     core::Result<unit, IoError> truncateFile(Handle handle, int64 len);
     core::Result<unit, IoError> flushFile(Handle handle);
-    core::Result<unit, IoError> truncateFile(Handle handle, int64 len);
     core::Result<int64, IoError> fileSize(Handle handle);
+    core::Result<unit, IoError> setPermissions(core::CStr path, int32 mode);
+    core::Result<unit, IoError> removePath(core::CStr path);
+    core::Result<unit, IoError> removeDirPath(core::CStr path);
+    core::Result<unit, IoError> makeDir(core::CStr path, int32 mode);
+    core::Result<unit, IoError> renamePath(core::CStr from, core::CStr to);
 
 } // namespace io

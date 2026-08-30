@@ -18,6 +18,12 @@ enum : long
     SYS_FSYNC = 74,
     SYS_FTRUNCATE = 77,
     SYS_STATX = 332,
+    SYS_FCHMOD=91,
+    SYS_FCHMODAT=268,
+
+    SYS_UNLINKAT = 263,
+    SYS_MKDIRAT = 258,
+    SYS_RENAMEAT = 264,
 
     SYS_MMAP = 9,
     SYS_MPROTECT = 10,
@@ -208,6 +214,11 @@ enum : long
     SYS_LLSEEK = 140,
     SYS_FTRUNCATE64 = 194,
     SYS_STATX = 383,
+    SYS_UNLINKAT = 301,
+    SYS_MKDIRAT = 296,
+    SYS_RENAMEAT = 302,
+    SYS_FCHMOD=94,
+    SYS_FCHMODAT=306,
 
     SYS_MMAP2 = 192,
     SYS_MPROTECT = 125,
@@ -386,7 +397,12 @@ enum : long
     SYS_FTRUNCATE = 93,
     SYS_LLSEEK = 140,
     SYS_FTRUNCATE64 = 194,
-    SYS_STATX = 397
+    SYS_STATX = 397,
+    SYS_UNLINKAT = 328,
+    SYS_MKDIRAT = 323,
+    SYS_RENAMEAT = 329,
+    SYS_FCHMOD=94,
+    SYS_FCHMODAT=333,
 
     SYS_MMAP2 = 192,
     SYS_MPROTECT = 125,
@@ -566,6 +582,11 @@ enum : long
     SYS_FSYNC = 82,
     SYS_FTRUNCATE = 46,
     SYS_STATX = 291,
+    SYS_UNLINKAT = 35,
+    SYS_MKDIRAT = 34,
+    SYS_RENAMEAT2 = 276,
+    SYS_FCHMOD=52,
+    SYS_FCHMODAT=53,
 
     SYS_MMAP = 222,
     SYS_MPROTECT = 226,
@@ -854,6 +875,13 @@ struct timespec
     long tv_nsec; // nanoseconds (0 .. 999,999,999)
 };
 
+struct StatxTimestamp
+{
+    int64 sec;
+    uint32 nsec;
+    uint32 _reserved;
+};
+
 struct Statx
 {
     uint32 mask;                   //   0
@@ -865,11 +893,11 @@ struct Statx
     uint16 mode;                   //  28
     uint16 _spare0;                //  30
     uint64 ino;                    //  32
-    uint64 size;                   //  40  <-- the field we want
+    uint64 size;                   //  40
     uint64 blocks;                 //  48
     uint64 attributes_mask;        //  56
     StatxTimestamp atime;          //  64
-    StatxTimestamp btime;          //  80  (creation time — Milestone 3 freebie)
+    StatxTimestamp btime;          //  80
     StatxTimestamp ctime;          //  96
     StatxTimestamp mtime;          // 112
     uint32 rdev_major, rdev_minor; // 128
@@ -881,14 +909,26 @@ struct Statx
 
 static_assert(sizeof(Statx) == 256, "statx ABI is a fixed 256 bytes");
 
+enum : uint16
+{
+    S_IFMT = 0170000,
+    S_IFREG = 0100000,
+    S_IFDIR = 0040000,
+    S_IFLNK = 0120000
+};
+
 enum : long
 {
     AT_EMPTY_PATH = 0x1000,
-    AT_SYMLINK_NOFOLLOW = 0x100
+    AT_SYMLINK_NOFOLLOW = 0x100,
+    AT_REMOVEDIR = 0x200
 };
 enum : uint32
 {
+    STATX_TYPE = 0x0001,
+    STATX_MODE = 0x0002,
     STATX_SIZE = 0x0200,
+    STATX_BTIME = 0x0800,
     STATX_BASIC_STATS = 0x07ff
 };
 // Linux x86-64 open flags (octal in the kernel ABI)
@@ -900,7 +940,7 @@ enum : long
     O_CREAT = 0100,
     O_TRUNC = 01000,
     O_APPEND = 02000,
-    O_EXCL=0200,
+    O_EXCL = 0200,
 };
 
 #elif defined(MLW_MAC)
