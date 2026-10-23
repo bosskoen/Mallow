@@ -35,6 +35,8 @@ enum : long
     SYS_FUTEX = 202,
 
     SYS_EXIT_GROUP = 231, // exit full aplication
+    SYS_GETDENTS64 = 217,
+
 
     SYS_EXIT = 60, // exit thread
 
@@ -228,6 +230,7 @@ enum : long
     SYS_CLONE = 120,
 
     SYS_FUTEX = 240,
+    SYS_GETDENTS64 = 220,
 
     SYS_EXIT_GROUP = 252, // exit full aplication
 
@@ -412,6 +415,7 @@ enum : long
     SYS_CLONE = 120,
 
     SYS_FUTEX = 240,
+    SYS_GETDENTS64 = 217,
 
     SYS_EXIT_GROUP = 248, // exit full aplication
 
@@ -596,6 +600,7 @@ enum : long
     SYS_CLONE = 220,
 
     SYS_FUTEX = 98,
+    SYS_GETDENTS64 = 61,
 
     SYS_EXIT_GROUP = 94, // exit full aplication
 
@@ -909,6 +914,18 @@ struct Statx
 
 static_assert(sizeof(Statx) == 256, "statx ABI is a fixed 256 bytes");
 
+struct linux_dirent64
+{
+    uint64 d_ino;    //  0
+    int64  d_off;    //  8
+    uint16 d_reclen; // 16  total record length incl. padding — advance by this
+    uint8  d_type;   // 18
+    char   d_name[]; // 19  NUL-terminated (flexible array member)
+};
+
+enum : uint8 { DT_UNKNOWN=0, DT_FIFO=1, DT_CHR=2, DT_DIR=4,
+               DT_BLK=6, DT_REG=8, DT_LNK=10, DT_SOCK=12 };
+
 enum : uint16
 {
     S_IFMT = 0170000,
@@ -941,6 +958,7 @@ enum : long
     O_TRUNC = 01000,
     O_APPEND = 02000,
     O_EXCL = 0200,
+    O_DIRECTORY = 0200000,
 };
 
 #elif defined(MLW_MAC)

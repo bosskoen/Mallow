@@ -26,6 +26,7 @@ target_link_libraries(file_system
     PUBLIC
         core::stl
         core::core
+        core::iterators
     )
 
 

@@ -9,6 +9,7 @@ target_sources(iterators
     PRIVATE
         public/iter/iterator.h
         public/iter/lines.h
+        public/iter/streams.h
 )
 
 target_include_directories(iterators INTERFACE

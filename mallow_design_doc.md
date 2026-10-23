@@ -41,8 +41,8 @@ Container library; the STL replacement.
 
 ### io (file handling) — *planned*
 File read/write on top of core's io / writer.
-- [ ] file handle + read/write
 - [ ] path handling
+- [ ] clean up and ducoment stream and fs
 
 
 ### serde — *planned*
@@ -56,10 +56,28 @@ you need.
       or stay independent
 --- 
 
+### reflection
+ider a runtime or compile time or macro or a combination of
+
+
+### custom sintax
+- [ ] make [ ] become the list intioliser
+- [ ] add the ? error operator
+- [ ] see if adding ( dont know the name (int i = if(x) {1} else {2};)) to msvc is doeble
+- [ ] add a way to force types to confine to a constept
+- [ ] make a null type replace unit
+
 ## Test system  *(current focus)*
 
 The runner discovers `bool test_*()` and generates the dispatch main.cpp; the root build compiles it into the tests exe.
 - [ ] "run only these tests" — test selection / filtering
+
+## overhale
+
+### split fs more
+
+### split windows and unix translation units
+addes the abilty to add more system ezzer and maby even NDA system behind a seperate pull
 
 
 

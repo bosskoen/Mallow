@@ -6,6 +6,7 @@
 #include <core/error.h>
 #include <stl/string.h>
 #include <core/libc/mem.h>
+#include <iter/iterator.h>
 
 namespace fs
 {
@@ -210,5 +211,61 @@ namespace fs
     }
     MLW_FORCE_INLINE core::Result<unit, io::IoError>
     setPermissions(core::CStr p, int32 mode) { return io::setPermissions(p, mode); }
+
+    core::Result<unit, io::IoError> removeDirAll(core::CStr path);
+
+    class DirEntry
+    {
+        core::String name_{};
+        io::FileType type_;
+
+    public:
+        DirEntry(core::CStr n, io::FileType t) : type_(t) { name_.append(n); }
+        core::CStr name() const { return name_.slice(0, name_.len()); }
+        io::FileType fileType() const { return type_; }
+        bool isDir() const { return type_ == io::FileType::Dir; }
+        bool isFile() const { return type_ == io::FileType::File; }
+        bool isSymlink() const { return type_ == io::FileType::Symlink; }
+    };
+
+    struct ReadDir : itorator::IterBase<ReadDir>
+    {
+        io::DirReader reader;
+        explicit ReadDir(io::DirReader &&r) : reader(core::move(r)) {}
+
+        using Item = core::Result<DirEntry, io::IoError>;
+        core::Optional<Item> next()
+        {
+            core::Result<core::Optional<io::DirEntryRaw>, io::IoError> r = reader.nextEntry();
+            if (r.isErr())
+                return core::Optional<Item>{core::optional_in_place, core::Err{r.takeError()}};
+            core::Optional<io::DirEntryRaw> &e = r.value();
+            if (e.isNone())
+                return {}; // end of directory
+            return core::Optional<Item>{core::optional_in_place,
+                                        core::Ok{DirEntry{e->name, e->type}}}; // copy happens in DirEntry ctor
+        }
+    };
+
+    MLW_FORCE_INLINE core::Result<ReadDir, io::IoError> readDir(core::CStr path)
+    {
+        core::Result<io::DirReader, io::IoError> r = io::openDir(path);
+        if (r.isErr())
+            return core::Err{r.takeError()};
+        return core::Ok{ReadDir{r.takeValue()}};
+    }
+
+    MLW_FORCE_INLINE core::Result<core::Vector<DirEntry>, io::IoError> readDirAll(core::CStr path)
+    {
+        TRY(rd, readDir(path));
+        core::Vector<DirEntry> out;
+        for (core::Result<fs::DirEntry, io::IoError>& it: core::move(rd).range())
+        {
+            if (it.isErr())
+                return core::Err{it.takeError()};
+            out.push(core::move(it.value()));
+        }
+        return core::Ok{core::move(out)};
+    }
 
 } // namespace fs

@@ -333,6 +333,12 @@ namespace core
 		/// \brief Truncate to length 0, keeping the current allocation.
 		void clear() { setLen(0); }
 
+		void truncate(isize n){
+			if(n != 0 && n < len()){
+				setLen(n);
+			}
+		}
+
 		// -- compare ----------------------------------------------------------
 
 		bool operator==(const String &o) const { return bytesEqual(o.data(), o.len()); }

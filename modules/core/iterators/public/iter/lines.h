@@ -2,56 +2,94 @@
 
 #include <iter/iterator.h>
 #include <stl/string.h>
+#include "iter/streams.h"
 
 namespace itorator
 {
-	template <ItoratorType It>
-		requires core::is_same_v<typename It::Item, core::Result<core::Span<uint8>, io::IoError>>
-	struct Lines : IterBase < Lines<It>>
-	{
-		It up;
-		core::String str{};
-		core::CStr buff{ 0,0 };
-		isize pos = 0;
 
-		Lines(It&& u) : up(core::move(u)) {};
+	template <BufRead R>
+	class Lines : IterBase<Lines<R>>
+	{
+		R reader;
+		core::String carry{}; // ONLY holds a partial line across a boundary
+		bool done = false;
+
+	public:
 		using Item = core::Result<core::CStr, io::IoError>;
 
-		core::Optional<Item> next() {
-			str.clear();
-			for (;;) {
-				if (pos != buff.len) {
-					isize base = pos;
-					for (; pos < buff.len; ++pos) {
-						if (buff[pos] == '\n') {
-							str.append(core::CStr(buff.ptr + base, pos - base)); // exclude \n
-							++pos;                                                // consume it
-							// optional: strip trailing '\r' from str here for CRLF
-							return core::Optional<Item>{ core::optional_in_place,
-								core::Ok{ str.slice(0, str.len()) } };
-						}
-					}
-					str.append(core::CStr(buff.ptr + base, pos - base));         // tail, no newline yet
+		core::Optional<Item> next()
+		{
+			carry.clear();
+			for (;;)
+			{
+				core::Result<core::Span<const uint8>, io::IoError> r = reader.fillBuf();
+				if (r.isErr())
+					return core::Optional<Item>{core::optional_in_place, core::Err{r.takeError()}};
+				core::Span<const uint8> b = r.value();
+
+				if (b.len == 0)
+				{ // EOF
+					if (carry.len() != 0)
+						return emitCarry(stripCRcarry());
+					return {};
 				}
-				else {
-					core::Optional<core::Result<core::Span<uint8>, io::IoError>> r = up.next();
-					if (r.isNone()) {
-						if (str.len() != 0) {
-							return core::Optional<Item>{ core::optional_in_place,
-								core::Ok{ str.slice(0, str.len()) } };
-						}
-						return {};                                                // clean EOF
+
+				// scan the reader's OWN buffer for '\n' — no copy
+				isize i = 0;
+				while (i < b.len && b.ptr[i] != '\n')
+					++i;
+
+				if (i < b.len)
+				{ // found '\n' at i
+					if (carry.len() == 0)
+					{
+						// zero-copy: line is b.ptr[0 .. i), strip a trailing '\r' by shortening the view
+						isize n = stripCRspan(b.ptr, i); // i, or i-1 if b.ptr[i-1]=='\r'
+						core::CStr line{(const char *)b.ptr, n};
+						reader.consume(i + 1); // consume the FULL line + '\n' (incl. the '\r')
+						return emitView(line);
 					}
-					if (r->isErr()) {
-						return core::Optional<Item>{ core::optional_in_place,
-							core::Err{ r->takeError() } };
+					else
+					{
+						// carry path: append this buffer's piece, THEN strip from the combined carry
+						carry.append(core::CStr{(const char *)b.ptr, i});
+						reader.consume(i + 1);
+						return emitCarry(stripCRcarry()); // emit carry minus a trailing '\r'
 					}
-					core::Span<uint8> s = r->value();
-					buff = core::CStr{ reinterpret_cast<const char*>(s.ptr), s.len };
-					pos = 0;                          // you also never reset pos after refill!
+				}
+				else
+				{ // no '\n' in this buffer: all partial
+					carry.append(core::CStr{(const char *)b.ptr, b.len});
+					reader.consume(b.len);
 				}
 			}
 		}
 
+	private:
+		static isize stripCRspan(const uint8 *ptr, isize len)
+		{
+			if (len > 0 && ptr[len - 1] == '\r')
+				return len - 1;
+			return len;
+		}
+
+		// How many bytes of `carry` to emit, dropping a trailing '\r'.
+		isize stripCRcarry() const
+		{
+			isize n = carry.len();
+			if (n > 0 && (uint8)carry.data()[n - 1] == '\r')
+				return n - 1;
+			return n;
+		}
+
+		core::Optional<Item> emitView(core::CStr line)
+		{
+			return core::Optional<Item>{core::optional_in_place, core::Ok{line}};
+		}
+		core::Optional<Item> emitCarry(isize len)
+		{
+			return core::Optional<Item>{core::optional_in_place, core::Ok{carry.slice(0, len)}};
+		}
 	};
+
 } // namespace itorator

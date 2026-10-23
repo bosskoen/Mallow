@@ -9,6 +9,7 @@
 #include "handle.h"
 #include "../span.h"
 #include "../result.h"
+#include "../optional.h"
 
 namespace io
 {
@@ -205,5 +206,35 @@ namespace io
     core::Result<unit, IoError> removeDirPath(core::CStr path);
     core::Result<unit, IoError> makeDir(core::CStr path, int32 mode);
     core::Result<unit, IoError> renamePath(core::CStr from, core::CStr to);
+
+    struct DirEntryRaw
+    {
+        core::CStr name; // TRANSIENT: valid only until the next nextEntry() call
+        FileType type;
+    };
+
+    class DirReader
+    {
+        Handle handle_ = Handle::invalid();
+        uint8 *buf_ = nullptr;
+        isize len_ = 0;      // POSIX: valid bytes from last getdents
+        isize pos_ = 0;      // POSIX: parse cursor
+        bool first_ = false; // Windows: FindFirst result not yet consumed
+
+        DirReader() = default; // only openDir builds one
+        friend core::Result<DirReader, IoError> openDir(core::CStr);
+
+    public:
+        ~DirReader();
+        DirReader(const DirReader &) = delete;
+        DirReader &operator=(const DirReader &) = delete;
+        DirReader(DirReader &&) noexcept;
+        DirReader &operator=(DirReader &&) noexcept;
+
+        core::Result<core::Optional<DirEntryRaw>, IoError> nextEntry();
+        //  Ok(Some) = entry, Ok(None) = end of directory, Err = read error
+    };
+
+    core::Result<DirReader, IoError> openDir(core::CStr path);
 
 } // namespace io

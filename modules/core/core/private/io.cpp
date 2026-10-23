@@ -1,5 +1,6 @@
 #include "io/io.h"
 #include "io/terminal.h"
+#include "libc/mem.h"
 
 #if defined(MLW_WINDOWS)
 #define WIN32_LEAN_AND_MEAN
@@ -33,6 +34,9 @@ static long retrySyscall(long num, long a, long b, long c, long d)
 
 namespace io
 {
+
+    static constexpr isize DIR_BUF = 8 * 1024;
+
     namespace
     { // file-local error mappers
 
@@ -124,7 +128,7 @@ namespace io
             case 22:
                 return {IoError::Kind::InvalidInput, e};
             case 38:
-                return { IoError::Kind::Unsupported, e };
+                return {IoError::Kind::Unsupported, e};
             case 20:
                 return {IoError::Kind::NotADirectory, e};
             case 39:
@@ -163,8 +167,6 @@ namespace io
             return m;
         }
 
-
-
         bool toCPath(core::CStr path, char (&buf)[4096])
         {
             if (path.len >= (index_t)sizeof(buf))
@@ -174,6 +176,26 @@ namespace io
             buf[path.len] = '\0';
             return true;
         }
+
+        FileType fromDType(uint8 t)
+        {
+            switch (t)
+            {
+            case DT_DIR:
+                return FileType::Dir;
+            case DT_REG:
+                return FileType::File;
+            case DT_LNK:
+                return FileType::Symlink;
+            default:
+                return FileType::Other; 
+            }
+        }
+        bool isDotEntry(const char *n)
+        {
+            return n[0] == '.' && (n[1] == '\0' || (n[1] == '.' && n[2] == '\0'));
+        }
+
 #endif
         IoError invalidInput() { return {IoError::Kind::InvalidInput, 22}; } // EINVAL
     } // anonymous
@@ -627,4 +649,109 @@ namespace io
         return core::Ok{unit{}};
 #endif
     }
+
+
+core::Result<DirReader, IoError> openDir(core::CStr path)
+{
+#if defined(MLW_WINDOWS)
+    wchar_t w[4096];
+    int wl = MultiByteToWideChar(CP_UTF8, 0, path.ptr, (int)path.len, w, 4090);
+    if (wl <= 0) return core::Err{ invalidInput() };
+    if (w[wl-1] != L'\\' && w[wl-1] != L'/') w[wl++] = L'\\';
+    w[wl++] = L'*'; w[wl] = L'\0';                       // search pattern "dir\*"
+
+    DirReader dr;
+    dr.buf_ = (uint8*)core::mlwMalloc(sizeof(WIN32_FIND_DATAW) + 1024); // + utf8 name scratch
+    HANDLE h = FindFirstFileW(w, (WIN32_FIND_DATAW*)dr.buf_);
+    if (h == INVALID_HANDLE_VALUE) {
+        core::mlwFree(dr.buf_); dr.buf_ = nullptr;
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) return core::Ok{ core::move(dr) }; // empty
+        return core::Err{ lastError() };
+    }
+    dr.handle_ = Handle{ h };
+    dr.first_  = true;
+    return core::Ok{ core::move(dr) };
+#else
+    char buf[4096];
+    if (!toCPath(path, buf)) return core::Err{ invalidInput() };
+    long r = retrySyscall(SYS_OPENAT, AT_FDCWD, (long)buf, O_RDONLY | O_DIRECTORY, 0);
+    if (r < 0) return core::Err{ fromErrno(-r) };
+    DirReader dr;
+    dr.handle_ = Handle{ (int32)r };
+    dr.buf_    = (uint8*)core::mlwMalloc(DIR_BUF);
+    return core::Ok{ core::move(dr) };
+#endif
+}
+
+
+core::Result<core::Optional<DirEntryRaw>, IoError> DirReader::nextEntry()
+{
+    using OptE = core::Optional<DirEntryRaw>;
+#if defined(MLW_WINDOWS)
+    if (!handle_.isValid()) return core::Ok{ OptE{} };          // empty dir
+    WIN32_FIND_DATAW* fd = (WIN32_FIND_DATAW*)buf_;
+    for (;;) {
+        if (first_) first_ = false;
+        else if (!FindNextFileW(handle_.fd, fd)) {
+            if (GetLastError() == ERROR_NO_MORE_FILES) return core::Ok{ OptE{} };
+            return core::Err{ lastError() };
+        }
+        const wchar_t* wn = fd->cFileName;
+        if (wn[0]==L'.' && (wn[1]==0 || (wn[1]==L'.' && wn[2]==0))) continue; // . / ..
+        char* name = (char*)(buf_ + sizeof(WIN32_FIND_DATAW));
+        int nl = WideCharToMultiByte(CP_UTF8, 0, wn, -1, name, 1024, nullptr, nullptr);
+        isize len = nl > 0 ? (isize)(nl - 1) : 0;            // drop the NUL
+        FileType t = (fd->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ? FileType::Symlink
+                   : (fd->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)     ? FileType::Dir
+                   :                                                          FileType::File;
+        return core::Ok{ OptE{ core::optional_in_place, DirEntryRaw{ core::CStr{name, len}, t } } };
+    }
+#else
+    for (;;) {
+        if (pos_ >= len_) {
+            long n = retrySyscall(SYS_GETDENTS64, (long)handle_.fd, (long)buf_, (long)DIR_BUF);
+            if (n < 0) return core::Err{ fromErrno(-n) };
+            if (n == 0) return core::Ok{ OptE{} };           // end of directory
+            len_ = (isize)n; pos_ = 0;
+        }
+        linux_dirent64* d = (linux_dirent64*)(buf_ + pos_);
+        const char* name = d->d_name;
+        uint8 dtype = d->d_type;
+        pos_ += d->d_reclen;                                  // advance by reclen, not name len
+        if (isDotEntry(name)) continue;
+        isize len = 0; while (name[len]) ++len;               // d_name is padded; scan to NUL
+        return core::Ok{ OptE{ core::optional_in_place, DirEntryRaw{ core::CStr{name, len}, fromDType(dtype) } } };
+    }
+#endif
+}
+
+
+DirReader::~DirReader() {
+    if (buf_) core::mlwFree(buf_);
+    if (handle_.isValid())
+#if defined(MLW_WINDOWS)
+        FindClose(handle_.fd);
+#else
+        syscall(SYS_CLOSE, (long)handle_.fd);
+#endif
+}
+DirReader::DirReader(DirReader&& o) noexcept
+    : handle_(o.handle_), buf_(o.buf_), len_(o.len_), pos_(o.pos_), first_(o.first_) {
+    o.handle_ = Handle::invalid(); o.buf_ = nullptr; o.len_=0; o.pos_=0; o.first_=false;
+}
+DirReader& DirReader::operator=(DirReader&& o) noexcept {
+    if (this != &o) {
+        if (buf_) core::mlwFree(buf_);
+        if (handle_.isValid())
+#if defined(MLW_WINDOWS)
+            FindClose(handle_.fd);
+#else
+            syscall(SYS_CLOSE, (long)handle_.fd);
+#endif
+        handle_=o.handle_; buf_=o.buf_; len_=o.len_; pos_=o.pos_; first_=o.first_;
+        o.handle_=Handle::invalid(); o.buf_=nullptr; o.len_=0; o.pos_=0; o.first_=false;
+    }
+    return *this;
+}
+
 }
