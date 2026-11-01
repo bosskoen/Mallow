@@ -160,40 +160,39 @@ namespace fs
         return core::Ok{total};
     }
 
+
+
+    static core::Result<unit, io::IoError> removeDirAllInto(core::String& pathBuf)
+        {
+            // read entries first — closes the dir fd before we start deleting
+            TRY(entries, readDirAll(core::CStr{ pathBuf }));
+
+            isize base = pathBuf.len();                 // remember where to truncate back to
+
+            for (const fs::DirEntry& entr : entries)
+            {
+                core::CStr nm = entr.name();
+
+                // push "/" + name   (single source of separator truth — swap for Path::isSep later)
+                pathBuf.truncate(base);                 // undo previous child (no-op on first)
+                if (base == 0 || pathBuf.data()[base-1] != '/')
+                    pathBuf.append(core::CStr{ "/", 1 });
+                pathBuf.append(nm);
+
+                core::CStr cp{ pathBuf.data(), pathBuf.len() };
+
+                if (entr.isDir()) { TRY(_, removeDirAllInto(pathBuf)); }  // recurse: buffer grows deeper
+                else               { TRY(_, removeFile(cp)); }            // symlink-to-dir: unlinked, not followed
+            }
+
+            pathBuf.truncate(base);                     // restore for the caller
+            return removeDir(core::CStr{ pathBuf.data(), pathBuf.len() });
+        }
+
     core::Result<unit, io::IoError> removeDirAll(core::CStr path)
     {
-        TRY(entries, readDirAll(path)); // dir fd closed once this returns
-
-        char child[4096];
-        isize base = path.len;
-        if (base + 1 >= (isize)sizeof(child))
-            return core::Err{io::IoError{io::IoError::Kind::InvalidInput, 22}};
-        for (isize i = 0; i < base; ++i)
-            child[i] = path.ptr[i];
-        if (base == 0 || child[base - 1] != '/')
-            child[base++] = '/'; // v1: '/' — Path lands in M6
-
-        DirEntry *es = entries.rawData();
-        for (isize k = 0; k < (isize)entries.len(); ++k)
-        {
-            core::CStr nm = es[k].name();
-            if (base + nm.len + 1 >= (isize)sizeof(child))
-                return core::Err{io::IoError{io::IoError::Kind::InvalidInput, 22}};
-            for (isize i = 0; i < nm.len; ++i)
-                child[base + i] = nm.ptr[i];
-            child[base + nm.len] = '\0';
-            core::CStr cp{child, base + nm.len};
-
-            if (es[k].isDir())
-            {
-                TRY(_, removeDirAll(cp));
-            } // recurse into real dirs only
-            else
-            {
-                TRY(_, removeFile(cp));
-            } // symlink-to-dir hits this: unlinked, not followed
-        }
-        return removeDir(path);
+        core::String buf{path};
+        return removeDirAllInto(buf);
     }
 
 } // namespace fs
