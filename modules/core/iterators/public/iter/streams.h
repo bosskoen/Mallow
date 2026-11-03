@@ -16,8 +16,7 @@ namespace itorator
     };
 
     template <Reader R>
-        requires !core::is_same_v<BufferedReader, R>
-                 class BufferedReader
+        class BufferedReader
     {
         R inner;
         core::Vector<uint8> buffer; // storage; [pos, filled) are pending unread bytes
@@ -107,7 +106,7 @@ namespace itorator
         {
             if (pos < filled)
             {
-                return core::Span{buffer.data() + pos, filled - pos};
+                return core::Span<const uint8>{buffer.rawData() + pos, filled - pos};
             }
             core::Result<isize, io::IoError> r =
                 inner.read(core::Span<uint8>{buffer.rawData(), READ_CHUNK});
@@ -115,7 +114,7 @@ namespace itorator
                 return core::Err{r.takeError()};
             filled = r.value();
             pos = 0;
-            return core::Span{buffer.data(), filled};
+            return core::Span<const uint8>{buffer.rawData(), filled};
         }
         void consume(isize n)
         {

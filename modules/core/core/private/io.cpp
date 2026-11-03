@@ -30,12 +30,13 @@ static long retrySyscall(long num, long a, long b, long c, long d)
         return r;
     }
 }
+
+static constexpr isize DIR_BUF = 8 * 1024;
 #endif
 
 namespace io
 {
 
-    static constexpr isize DIR_BUF = 8 * 1024;
 
     namespace
     { // file-local error mappers

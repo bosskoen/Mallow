@@ -295,6 +295,12 @@ namespace core
 			return CStr(data() + start, static_cast<index_t>(count));
 		}
 
+		/// \brief gets the last character 
+		char& back() {return data()[len()-1];}
+		
+		/// \copydoc back()
+		char back() const {return data()[len()-1];}
+
 		// -- modifiers --------------------------------------------------------
 
 		/// \brief Append one byte. Grows if needed; panics on OOM.
@@ -334,7 +340,7 @@ namespace core
 		void clear() { setLen(0); }
 
 		void truncate(isize n){
-			if(n != 0 && n < len()){
+			if(n < len()){
 				setLen(n);
 			}
 		}

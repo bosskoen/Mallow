@@ -380,8 +380,8 @@ namespace core
             return *ptr;
         }
 
-        /// \brief Return the referent, or panic with `msg` if empty.
-        T &expect(const char *msg)
+        /// \brief Return the reference, or panic with `msg` if empty.
+        T &expect(CStr msg)
         {
             if (!ptr)
                 panic(msg);

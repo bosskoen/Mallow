@@ -9,6 +9,8 @@ target_sources(file_system
         ${CMAKE_CURRENT_SOURCE_DIR}/public/fs/concepts.h
         ${CMAKE_CURRENT_SOURCE_DIR}/public/fs/file.h
         ${CMAKE_CURRENT_SOURCE_DIR}/private/file.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/public/fs/path.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/private/path.cpp
 
     )
 

@@ -75,6 +75,7 @@ target_sources(core
         private/anonymous_allocator.cpp
         public/core/memory/anonymous_allocator.h
         public/core/hash.h
+        public/core/ascii.h
 )
 
 if(MLW_ABI_MSVC)

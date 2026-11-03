@@ -171,6 +171,9 @@ namespace core
     template <typename T, typename... Args>
     inline constexpr bool is_constructible_v = is_constructible<T, Args...>::value;
 
+    template <typename T>
+    inline constexpr bool is_default_constructible_v = is_constructible<T>::value;
+
     // copy/move constructible and assignable — also builtins
     template <typename T> struct is_copy_constructible { static constexpr bool value = __is_constructible(T, const T &); };
     template <typename T>

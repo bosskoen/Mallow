@@ -19,7 +19,7 @@ namespace fs
         if (szR.isOk() && posR.isOk() && szR.value() > posR.value())
         {
             int64 remaining = szR.value() - posR.value();
-            out.reserve((isize)remaining); // one allocation, exact size
+            out.resize((isize)remaining); // one allocation, exact size
 
             core::Span<uint8> dst{out.rawData(), (isize)remaining};
             while (dst.len > 0)
@@ -29,7 +29,7 @@ namespace fs
                     return core::Err{r.takeError()};
                 if (r.value() == 0)
                 {                                             // file shrank, or hint was stale
-                    out.reserve((isize)(remaining - dst.len)); // trim to what we got
+                    out.truncate((isize)(remaining - dst.len)); // trim to what we got
                     return core::Ok{core::move(out)};
                 }
                 dst.ptr += r.value();

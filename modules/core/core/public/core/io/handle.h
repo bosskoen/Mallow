@@ -20,10 +20,10 @@ namespace io
     {
 #if defined(MLW_WINDOWS)
         /// \brief Construct from a native Windows handle.
-        constexpr Handle(void *h) : fd(h) {}
+        Handle(void *h) : fd(h) {}
         /// \brief Native Windows handle.
         void *fd;
-        constexpr static Handle invalid() { return Handle((void *)(int64)-1); }
+        static Handle invalid() { return Handle(reinterpret_cast<void*>(static_cast<int64>(-1))); }
 #else
         /// \brief Construct from a POSIX file descriptor.
         constexpr Handle(int32 h) : fd(h) {}

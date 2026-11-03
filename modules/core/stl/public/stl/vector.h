@@ -299,6 +299,46 @@ namespace core
 			}
 		}
 
+		/// \brief Resize to exactly \p n elements.
+		///        Growing default-constructs the new tail; shrinking destroys the removed tail.
+		/// \note Only available when T is default-constructible (growing must construct).
+		///       Capacity may grow; it is never reduced.
+		void resize(isize n)
+			requires core::is_default_constructible_v<T>
+		{
+			if (n < length)
+			{
+				truncate(n); // reuse: destroys [n, length), sets length = n
+				return;
+			}
+			if (n > length)
+			{
+				reserve(n); // ensure capacity (panics on OOM, like your other growers)
+				for (isize i = length; i < n; ++i)
+					::new (data + i) T(); // default-construct the new elements
+				length = n;
+			}
+			// n == length: nothing to do
+		}
+
+		/// \brief Resize to \p n elements, filling any new tail with copies of \p value.
+		void resize(isize n, const T &value)
+			requires core::is_copy_constructible_v<T>
+		{
+			if (n < length)
+			{
+				truncate(n);
+				return;
+			}
+			if (n > length)
+			{
+				reserve(n);
+				for (isize i = length; i < n; ++i)
+					::new (data + i) T(value); // copy-construct from the fill value
+				length = n;
+			}
+		}
+
 		/// \brief Destroy all elements, keeping capacity.
 		void clear()
 		{

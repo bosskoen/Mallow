@@ -8,6 +8,7 @@
 namespace core
 {
     usize mlwStrlen(const char *str);
+    int   mlwMemcmp(const void* a, const void* b, usize n);
     
     /// \ingroup formattable
     /// \brief Non-owning view of a C-style string.
@@ -58,5 +59,10 @@ namespace core
             return CStr(ptr, static_cast<isize>(mlwStrlen(ptr)));
         }
         char operator[](isize index) { return ptr[index]; }
+        bool operator==(const CStr& other){
+            if(len != other.len) return false;
+            if(ptr == other.ptr) return true;
+            return mlwMemcmp(ptr,other.ptr, len) == 0;
+        }
     };
 } // namespace core

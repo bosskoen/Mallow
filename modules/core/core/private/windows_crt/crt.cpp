@@ -128,7 +128,7 @@ extern const IMAGE_TLS_DIRECTORY64 _tls_used = {
     (ULONGLONG)&_tls_index,      // AddressOfIndex
     (ULONGLONG)(&__xl_a + 1),    // AddressOfCallBacks — array starts AFTER __xl_a
     (ULONG)0,                    // SizeOfZeroFill
-    (ULONG)0                     // Characteristics
+    {(ULONG)0}                     // Characteristics
 };
 #pragma const_seg()
 

@@ -34,9 +34,10 @@
 ///     return Ok{};
 /// }
 /// \endcode
-#define TRY(var, res)                                             \
-    auto _try_##var = (res);                                      \
-    if (_try_##var.isErr()) return core::Err{_try_##var.takeError()}; \
+#define TRY(var, res)                             \
+    auto _try_##var = (res);                      \
+    if (_try_##var.isErr())                       \
+        return core::Err{_try_##var.takeError()}; \
     auto var = _try_##var.takeValue()
 
 #if defined(MLW_GCC) || defined(MLW_CLANG)
@@ -57,11 +58,12 @@
 /// \code
 /// int x = TRY_EXPR(open_file("x"));   // returns Err from the caller on failure
 /// \endcode
-#define TRY_EXPR(res)                                             \
-    ({                                                            \
-        auto _try_r = (res);                                      \
-        if (_try_r.isErr()) return core::Err{_try_r.takeError()}; \
-        _try_r.takeValue();                                       \
+#define TRY_EXPR(res)                             \
+    ({                                            \
+        auto _try_r = (res);                      \
+        if (_try_r.isErr())                       \
+            return core::Err{_try_r.takeError()}; \
+        _try_r.takeValue();                       \
     })
 #endif
 
@@ -88,11 +90,15 @@
 /// \endcode
 #define if_ok(var, expr, ...)                    \
     if (auto _r_##var = (expr); _r_##var.isOk()) \
+    {                                            \
         if (auto &var = _r_##var.value(); true)  \
+        {                                        \
             __VA_ARGS__                          \
+        }                                        \
         else                                     \
         {                                        \
-        }
+        }                                        \
+    }
 
 /// \brief Execute `expr` and run the body if the result is Err.
 ///
@@ -117,8 +123,12 @@
 /// \endcode
 #define if_err(var, expr, ...)                    \
     if (auto _r_##var = (expr); _r_##var.isErr()) \
+    {                                             \
         if (auto &var = _r_##var.error(); true)   \
+        {                                         \
             __VA_ARGS__                           \
+        }                                         \
         else                                      \
         {                                         \
-        }
+        }                                         \
+    }
