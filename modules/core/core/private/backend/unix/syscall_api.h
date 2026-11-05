@@ -769,62 +769,100 @@ inline long clone(int (*fn)(void *), void *stack_top, long flags,
 
 #endif
 
+static long retrySyscall(long num, long a, long b, long c)
+{
+    for (;;)
+    {
+        long r = syscall(num, a, b, c);
+        if (r == -4 /*EINTR*/)
+            continue; // signal interrupted; try again
+        return r;
+    }
+}
+
+static long retrySyscall(long num, long a, long b, long c, long d)
+{
+    for (;;)
+    {
+        long r = syscall(num, a, b, c, d);
+        if (r == -4 /*EINTR*/)
+            continue; // signal interrupted; try again
+        return r;
+    }
+}
+
+
 #define MAP_FAILED ((void *)-1)
-#define MREMAP_FIXED 2
-#define AT_PAGESZ 6
-#define AT_HWCAP 16
 
-#define SC_PAGESIZE 30
-#define SC_NPROCESSORS_ONLN 84
+enum : long
+{
+    SC_PAGESIZE = 30,
+    SC_NPROCESSORS_ONLN = 84,
+};
 
-#define PROT_NONE 0x0
-#define PROT_READ 0x1
-#define PROT_WRITE 0x2
-#define PROT_EXEC 0x4
+enum : long
+{
+    PROT_NONE = 0x0,
+    PROT_READ = 0x1,
+    PROT_WRITE = 0x2,
+    PROT_EXEC = 0x4,
+} enum : long
+{
+    MAP_SHARED = 0x01,
+    MAP_PRIVATE = 0x02,
+    MAP_FIXED = 0x10,
+    MAP_ANONYMOUS = 0x20,
+    MAP_ANON = MAP_ANONYMOUS,
+    MAP_NORESERVE = 0x4000,
+    MAP_POPULATE = 0x8000,
+    MAP_STACK = 0x20000,
+} enum : long
+{
+    MREMAP_MAYMOVE = 1,
+    MREMAP_FIXED = 2,
+    MREMAP_DONTUNMAP = 4,
+}
 
-// mmap flags  (same on x86/x86-64/arm/arm64 — the asm-generic values)
-#define MAP_SHARED 0x01
-#define MAP_PRIVATE 0x02
-#define MAP_FIXED 0x10
-#define MAP_ANONYMOUS 0x20
-#define MAP_ANON MAP_ANONYMOUS
-#define MAP_NORESERVE 0x4000
-#define MAP_POPULATE 0x8000
-#define MAP_STACK 0x20000
+enum : long
+{
+    FUTEX_WAIT = 0,
+    FUTEX_WAKE = 1,
+    FUTEX_REQUEUE = 3,
+    FUTEX_CMP_REQUEUE = 4,
+    FUTEX_WAKE_OP = 5,
+    FUTEX_WAIT_BITSET = 9,
+    FUTEX_WAKE_BITSET = 10,
+    FUTEX_PRIVATE_FLAG = 128, // 0x80
+    FUTEX_CLOCK_REALTIME = 256,
+    FUTEX_WAIT_PRIVATE = (FUTEX_WAIT | FUTEX_PRIVATE_FLAG), // 128
+    FUTEX_WAKE_PRIVATE = (FUTEX_WAKE | FUTEX_PRIVATE_FLAG), // 129
+}
 
-// mremap flags
-#define MREMAP_MAYMOVE 1
-#define MREMAP_FIXED 2
-#define MREMAP_DONTUNMAP 4
+enum : long
+{
+    AT_PAGESZ = 6,
+    AT_HWCAP = 16,
+    AT_FDCWD = -100,
+}
 
-// futex op codes  (kernel ABI — identical on every arch)
-#define FUTEX_WAIT 0
-#define FUTEX_WAKE 1
-#define FUTEX_REQUEUE 3
-#define FUTEX_CMP_REQUEUE 4
-#define FUTEX_WAKE_OP 5
-#define FUTEX_WAIT_BITSET 9
-#define FUTEX_WAKE_BITSET 10
+enum : long
+{
+    CLONE_VM = 0x00000100,
+    CLONE_FS = 0x00000200,
+    CLONE_FILES = 0x00000400,
+    CLONE_SIGHAND = 0x00000800,
+    CLONE_THREAD = 0x00010000,
+    CLONE_SYSVSEM = 0x00040000,
+    CLONE_SETTLS = 0x00080000,
+    CLONE_PARENT_SETTID = 0x00100000,
+    CLONE_CHILD_CLEARTID = 0x00200000,
+}
 
-#define FUTEX_PRIVATE_FLAG 128 // 0x80
-#define FUTEX_CLOCK_REALTIME 256
-
-#define FUTEX_WAIT_PRIVATE (FUTEX_WAIT | FUTEX_PRIVATE_FLAG) // 128
-#define FUTEX_WAKE_PRIVATE (FUTEX_WAKE | FUTEX_PRIVATE_FLAG) // 129
-
-#define CLONE_VM 0x00000100
-#define CLONE_FS 0x00000200
-#define CLONE_FILES 0x00000400
-#define CLONE_SIGHAND 0x00000800
-#define CLONE_THREAD 0x00010000
-#define CLONE_SYSVSEM 0x00040000
-#define CLONE_SETTLS 0x00080000
-#define CLONE_PARENT_SETTID 0x00100000
-#define CLONE_CHILD_CLEARTID 0x00200000
-
-static constexpr long AT_FDCWD = -100;
-
-static inline int is_err(long r) { return r < 0 && r > -4096; }
+static inline int
+is_err(long r)
+{
+    return r < 0 && r > -4096;
+}
 
 inline long write(int fd, const void *buf, unsigned long n)
 {

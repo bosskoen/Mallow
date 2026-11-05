@@ -4,7 +4,7 @@
 #if defined(MLW_WINDOWS)
 #include <windows.h>         // ExitProcess / TerminateProcess
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-#include "posix/syscall_api.h" // syscall(), SYS_EXIT_GROUP
+#include "backend/unix/syscall_api.h" // syscall(), SYS_EXIT_GROUP
 #else
 #error "Unsupported platform"
 #endif

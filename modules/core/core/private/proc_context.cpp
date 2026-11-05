@@ -36,7 +36,7 @@ core::SysInfo core::ProcContext::getSysInfo(){
 }
 
 #elif defined(MLW_LINUX)
-#include "posix/syscall_api.h"
+#include "backend/unix/syscall_api.h"
 
 extern "C" unsigned long __getauxval(unsigned long type);
 

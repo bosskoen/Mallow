@@ -5,27 +5,26 @@
 #if defined(MLW_WINDOWS)
 #include <windows.h>
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
-#include "posix/syscall_api.h"
+#include "backend/unix/syscall_api.h"
 #else
 #error "Unsupported platform"
 #endif
-
 
 #include "crt_internals.h"
 namespace core::detail
 {
 
-
-
-	alignas(FormatBufferType) static thread_local uint8 fb_storage[sizeof(FormatBufferType)]{ 0 };
+	alignas(FormatBufferType) static thread_local uint8 fb_storage[sizeof(FormatBufferType)]{0};
 	static thread_local bool fb_constructed = false;
 
 	void mlw__crt_distroy_format_buffer()
 	{
-		if (fb_constructed) {
-			FormatBufferType& buf = *reinterpret_cast<FormatBufferType*>(fb_storage);
-			char* p = buf.ptr;
-			if (p) {
+		if (fb_constructed)
+		{
+			FormatBufferType &buf = *reinterpret_cast<FormatBufferType *>(fb_storage);
+			char *p = buf.ptr;
+			if (p)
+			{
 #if defined(MLW_WINDOWS)
 				::VirtualFree(p, 0, MEM_RELEASE);
 #elif defined(MLW_LINUX) || defined(MLW_MAC)
@@ -36,18 +35,19 @@ namespace core::detail
 			buf.len = 0;
 			buf.capacity = 0;
 			fb_constructed = false;
-		} 
+		}
 	}
 
 	FormatBufferType &getFormatBuffer()
 	{
-		//io::writeHandle(core::terminal::stdoutHandle(), core::CStr(reinterpret_cast<char*>(&fb_constructed), 1));
-		if (!fb_constructed) {
-			FormatBufferType& b = *reinterpret_cast<FormatBufferType*>(fb_storage);
+		// io::writeHandle(core::terminal::stdoutHandle(), core::CStr(reinterpret_cast<char*>(&fb_constructed), 1));
+		if (!fb_constructed)
+		{
+			FormatBufferType &b = *reinterpret_cast<FormatBufferType *>(fb_storage);
 
 #if defined(MLW_WINDOWS)
 
-			b.ptr = static_cast<char*>(VirtualAlloc(nullptr, PLATFORM_INFO.alloc_granularity, MEM_RESERVE, PAGE_READWRITE));
+			b.ptr = static_cast<char *>(VirtualAlloc(nullptr, PLATFORM_INFO.alloc_granularity, MEM_RESERVE, PAGE_READWRITE));
 
 			if (!b.ptr)
 				panic_mem("VirtualAlloc(MEM_RESERVE) failed.");
@@ -59,7 +59,7 @@ namespace core::detail
 
 #else
 
-			b.ptr = static_cast<char*>(
+			b.ptr = static_cast<char *>(
 				mmap(nullptr, PLATFORM_INFO.page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
 
 			if (b.ptr == MAP_FAILED)
@@ -72,7 +72,7 @@ namespace core::detail
 			b.capacity = static_cast<index_t>(PLATFORM_INFO.page_size);
 			fb_constructed = true;
 		}
-		return *reinterpret_cast<FormatBufferType*>(fb_storage);
+		return *reinterpret_cast<FormatBufferType *>(fb_storage);
 	}
 }
 

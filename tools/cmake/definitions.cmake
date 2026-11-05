@@ -1,11 +1,20 @@
 # tools/cmake/definitions.cmake
 
+set(MLW_WINDOWS false)
+set(MLW_LINUX false)
+set(MLW_MAC false)
+
+# more later
+
 if(WIN32)
     add_compile_definitions(MLW_WINDOWS)
+    set(MLW_WINDOWS true)
 elseif(UNIX AND NOT APPLE)
     add_compile_definitions(MLW_LINUX)
+    set(MLW_LINUX true)
 elseif(APPLE)
     add_compile_definitions(MLW_MAC)
+    set(MLW_MAC true)
 else()
     message(WARNING "MLW: unknown platform")
 endif()

@@ -31,17 +31,6 @@
 //  is relative to drive C's current directory.
 // ============================================================================
 
-namespace
-{
-	// Last separator index in p, or -1 if none.
-	isize lastSep(fs::Path p)
-	{
-		for (isize i = p.len - 1; i >= 0; --i)
-			if (fs::Path::isSep(p.ptr[i]))
-				return i;
-		return -1;
-	}
-}
 
 // ----------------------------------------------------------------------------
 //  rootLen — the single source of truth. Everything else calls this.

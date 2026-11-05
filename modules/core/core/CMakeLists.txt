@@ -10,6 +10,7 @@ endif()
 
 mlw_set_warnings(core LEVEL W4)
 
+# all shared files
 target_sources(core
     PRIVATE
         public/core/io/terminal.h
@@ -19,7 +20,6 @@ target_sources(core
         private/c_string.cpp
         public/core/c_string.h
         public/core/io/io.h
-        private/io.cpp
         public/core/macro.h
         private/format.cpp
         public/core/traits.h
@@ -76,13 +76,14 @@ target_sources(core
         public/core/memory/anonymous_allocator.h
         public/core/hash.h
         public/core/ascii.h
+        public/core/span.h
 )
 
+# runtime specific files
 if(MLW_ABI_MSVC)
     target_sources(core PRIVATE
         private/windows_crt/crt.cpp
         private/windows_crt/init_thread.cpp
-        public/core/span.h
     )
 
 else()  # GCC / Clang → Itanium ABI
@@ -91,6 +92,7 @@ else()  # GCC / Clang → Itanium ABI
     )
 endif()
 
+# mem loops
 if(MSVC)   # cl.exe or clang-cl — slash flags
     set_source_files_properties(private/freestanding.cpp PROPERTIES
         COMPILE_OPTIONS "/Oi-;/GL-")
@@ -102,6 +104,7 @@ else()  # Clang in gnu-mode
         COMPILE_OPTIONS "-fno-builtin;-fno-lto")
 endif()
 
+# limb optimizations
 if(MSVC)
     set_source_files_properties(private/math/exp.cpp private/math/cbrt.cpp private/math/log.cpp         private/math/log10.cpp
         private/math/log2f.cpp
@@ -131,6 +134,25 @@ else()
         private/math/pow.cpp
         PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=fast")
 endif()
+
+
+if(MLW_WINDOWS)
+    set(CORE_BACKEND private/backend/windows)
+elseif(MLW_LINUX)
+    set(CORE_BACKEND private/backend/unix)
+else()
+message(WARNING "MLW: unknown platform")
+endif()
+
+
+target_sources(core
+    PRIVATE
+    ${CORE_BACKEND}/io.cpp
+    private/backend/common/io_common.h
+    private/backend/common/io_common.cpp
+    )
+
+
 
 target_include_directories(core
     PUBLIC
