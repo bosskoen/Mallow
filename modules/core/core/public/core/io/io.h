@@ -40,7 +40,8 @@ namespace io
             Unsupported,
             NotADirectory,     // a path component isn't a directory (ENOTDIR)
             DirectoryNotEmpty, // rmdir on a non-empty dir (ENOTEMPTY)
-            Other,             // catch-all; carries the raw errno/GetLastError below
+            BufferTooSmall,
+            Other, // catch-all; carries the raw errno/GetLastError below
         } kind;
         isize os_code; ///< errno or GetLastError() captured at the failure site
 
@@ -87,6 +88,9 @@ namespace io
                 break;
             case Kind::NotADirectory:
                 b.append("Not a directory");
+                break;
+            case Kind::BufferTooSmall:
+                b.append("Supplied buffer too small");
                 break;
             case Kind::DirectoryNotEmpty:
                 b.append("Directory not empty");
@@ -236,5 +240,7 @@ namespace io
     };
 
     core::Result<DirReader, IoError> openDir(core::CStr path);
+
+    core::Result<isize, IoError> getCwdInto(core::CStr buf);
 
 } // namespace io

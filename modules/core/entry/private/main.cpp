@@ -55,12 +55,14 @@ extern "C" void mlwStart(){
 
 
     core::detail::ThreadCache::mlw__first_crt_ctor();
+    
+    #if MLW_WINDOWS
+        mlw_build_win_args();
+    #endif
+
     crt::run_global_ctors();
     crt::run_thread_local_ctors();
 
-#if MLW_WINDOWS
-    mlw_build_win_args();
-#endif
     int32 cr =  mallowMain();
 
     core::mlwExit(cr);

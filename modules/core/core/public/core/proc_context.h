@@ -23,6 +23,7 @@ namespace core
     {
         index_t argc;        ///< Argument count.
         char **argv;         ///< Pointer to OS-owned argument array.
+        //isize* args a array of the string sizes computed once
         char **envp = nullptr; ///< Pointer to OS-owned environment array, or nullptr on Windows.
 
         /// \brief Query system information from this process context.

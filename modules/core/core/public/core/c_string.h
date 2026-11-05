@@ -59,7 +59,7 @@ namespace core
             return CStr(ptr, static_cast<isize>(mlwStrlen(ptr)));
         }
         char operator[](isize index) { return ptr[index]; }
-        bool operator==(const CStr& other){
+        bool operator==(const CStr& other) const{
             if(len != other.len) return false;
             if(ptr == other.ptr) return true;
             return mlwMemcmp(ptr,other.ptr, len) == 0;

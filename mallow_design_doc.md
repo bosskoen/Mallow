@@ -23,6 +23,7 @@ threading, CRT bootstrap.
 - [ ] make libm constexpr
 - [ ] add __chkstk() and remove the fully commited stak
 - [ ] small mem* dont get optimised becous the compile doesnt see the mem* call
+- [ ] a thread error somewere in the memory alloc test 
 
 
 ### entry

@@ -7,7 +7,7 @@
 #include <stl/string.h>
 #include <core/libc/mem.h>
 #include <iter/iterator.h>
-
+#include "fs/path.h"
 namespace fs
 {
 
@@ -19,18 +19,18 @@ namespace fs
         explicit File(io::Handle h) : handle(h) {}
 
     public:
-        static core::Result<File, io::IoError> open(core::CStr path, io::OpenMode mode)
+        static core::Result<File, io::IoError> open(Path path, io::OpenMode mode)
         {
-            core::Result<io::Handle, io::IoError> result = io::openFile(path, mode);
+            core::Result<io::Handle, io::IoError> result = io::openFile(path.toCStr(), mode);
             if (result.isErr())
             {
                 return core::Err(result.error());
             }
             return core::Ok(File(result.takeValue()));
         }
-        static core::Result<File, io::IoError> open(core::CStr path, const io::OpenOptions &opts)
+        static core::Result<File, io::IoError> open(Path path, const io::OpenOptions &opts)
         {
-            core::Result<io::Handle, io::IoError> r = io::openFile(path, opts);
+            core::Result<io::Handle, io::IoError> r = io::openFile(path.toCStr(), opts);
             if (r.isErr())
                 return core::Err(r.takeError());
             return core::Ok(File(r.takeValue()));
@@ -103,12 +103,12 @@ namespace fs
     };
 
     // fs free functions
-    MLW_FORCE_INLINE core::Result<io::Metadata, io::IoError> metadata(core::CStr p) { return io::statPath(p, true); }
-    MLW_FORCE_INLINE core::Result<io::Metadata, io::IoError> symlinkMetadata(core::CStr p) { return io::statPath(p, false); }
+    MLW_FORCE_INLINE core::Result<io::Metadata, io::IoError> metadata(Path p) { return io::statPath(p.toCStr(), true); }
+    MLW_FORCE_INLINE core::Result<io::Metadata, io::IoError> symlinkMetadata(Path p) { return io::statPath(p.toCStr(), false); }
 
-    MLW_FORCE_INLINE core::Result<bool, io::IoError> exists(core::CStr path)
+    MLW_FORCE_INLINE core::Result<bool, io::IoError> exists(Path path)
     {
-        core::Result<io::Metadata, io::IoError> r = io::statPath(path, true);
+        core::Result<io::Metadata, io::IoError> r = io::statPath(path.toCStr(), true);
         if (r.isErr())
         {
             if (r.error().kind == io::IoError::Kind::NotFound)
@@ -118,9 +118,9 @@ namespace fs
         return core::Ok{true};
     }
 
-    MLW_FORCE_INLINE core::Result<bool, io::IoError> isFile(core::CStr path)
+    MLW_FORCE_INLINE core::Result<bool, io::IoError> isFile(Path path)
     {
-        core::Result<io::Metadata, io::IoError> r = io::statPath(path, true);
+        core::Result<io::Metadata, io::IoError> r = io::statPath(path.toCStr(), true);
         if (r.isErr())
         {
             if (r.error().kind == io::IoError::Kind::NotFound)
@@ -168,16 +168,16 @@ namespace fs
 
     MLW_FORCE_INLINE FileDrain File::drain() && { return FileDrain{core::move(*this)}; }
 
-    MLW_FORCE_INLINE core::Result<unit, io::IoError> removeFile(core::CStr p) { return io::removePath(p); }
-    MLW_FORCE_INLINE core::Result<unit, io::IoError> removeDir(core::CStr p) { return io::removeDirPath(p); }
-    MLW_FORCE_INLINE core::Result<unit, io::IoError> createDir(core::CStr p) { return io::makeDir(p, 0755); }
-    MLW_FORCE_INLINE core::Result<unit, io::IoError> rename(core::CStr a, core::CStr b) { return io::renamePath(a, b); }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> removeFile(Path p) { return io::removePath(p.toCStr()); }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> removeDir(Path p) { return io::removeDirPath(p.toCStr()); }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> createDir(Path p) { return io::makeDir(p.toCStr(), 0755); }
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> rename(Path a, Path b) { return io::renamePath(a.toCStr(), b.toCStr()); }
 
-    core::Result<unit, io::IoError> createDirAll(core::CStr path);
+    core::Result<unit, io::IoError> createDirAll(Path path);
 
-    core::Result<int64, io::IoError> copy(core::CStr from, core::CStr to);
+    core::Result<int64, io::IoError> copy(Path from, Path to);
 
-    MLW_FORCE_INLINE core::Result<core::Vector<uint8>, io::IoError> readToBytes(core::CStr path)
+    MLW_FORCE_INLINE core::Result<core::Vector<uint8>, io::IoError> readToBytes(Path path)
     {
         core::Result<File, io::IoError> r = File::open(path, io::OpenMode::Read);
         if (r.isErr())
@@ -185,7 +185,7 @@ namespace fs
         File f = r.takeValue();
         return f.readAll();
     }
-    MLW_FORCE_INLINE core::Result<core::String, io::IoError> readToString(core::CStr path)
+    MLW_FORCE_INLINE core::Result<core::String, io::IoError> readToString(Path path)
     {
         core::Result<File, io::IoError> r = File::open(path, io::OpenMode::Read);
         if (r.isErr())
@@ -193,7 +193,7 @@ namespace fs
         File f = r.takeValue();
         return f.readText();
     }
-    MLW_FORCE_INLINE core::Result<unit, io::IoError> writeBytes(core::CStr path, core::Span<const uint8> data)
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> writeBytes(Path path, core::Span<const uint8> data)
     {
         core::Result<File, io::IoError> r = File::open(path, io::OpenMode::Write);
         if (r.isErr())
@@ -201,7 +201,7 @@ namespace fs
         File f = r.takeValue();
         return f.writeAll(data);
     }
-    MLW_FORCE_INLINE core::Result<unit, io::IoError> appendBytes(core::CStr path, core::Span<const uint8> data)
+    MLW_FORCE_INLINE core::Result<unit, io::IoError> appendBytes(Path path, core::Span<const uint8> data)
     {
         core::Result<File, io::IoError> r = File::open(path, io::OpenMode::Append);
         if (r.isErr())
@@ -210,9 +210,9 @@ namespace fs
         return f.writeAll(data);
     }
     MLW_FORCE_INLINE core::Result<unit, io::IoError>
-    setPermissions(core::CStr p, int32 mode) { return io::setPermissions(p, mode); }
+    setPermissions(Path p, int32 mode) { return io::setPermissions(p.toCStr(), mode); }
 
-    core::Result<unit, io::IoError> removeDirAll(core::CStr path);
+    core::Result<unit, io::IoError> removeDirAll(Path path);
 
     class DirEntry
     {
@@ -220,7 +220,7 @@ namespace fs
         io::FileType type_;
 
     public:
-        DirEntry(core::CStr n, io::FileType t) : type_(t) { name_.append(n); }
+        DirEntry(Path n, io::FileType t) : type_(t) { name_.append(n.toCStr()); }
         core::CStr name() const { return name_.slice(0, name_.len()); }
         io::FileType fileType() const { return type_; }
         bool isDir() const { return type_ == io::FileType::Dir; }
@@ -247,15 +247,15 @@ namespace fs
         }
     };
 
-    MLW_FORCE_INLINE core::Result<ReadDir, io::IoError> readDir(core::CStr path)
+    MLW_FORCE_INLINE core::Result<ReadDir, io::IoError> readDir(Path path)
     {
-        core::Result<io::DirReader, io::IoError> r = io::openDir(path);
+        core::Result<io::DirReader, io::IoError> r = io::openDir(path.toCStr());
         if (r.isErr())
             return core::Err{r.takeError()};
         return core::Ok{ReadDir{r.takeValue()}};
     }
 
-    MLW_FORCE_INLINE core::Result<core::Vector<DirEntry>, io::IoError> readDirAll(core::CStr path)
+    MLW_FORCE_INLINE core::Result<core::Vector<DirEntry>, io::IoError> readDirAll(Path path)
     {
         TRY(rd, readDir(path));
         core::Vector<DirEntry> out;

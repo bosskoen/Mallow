@@ -37,6 +37,8 @@ enum : long
     SYS_EXIT_GROUP = 231, // exit full aplication
     SYS_GETDENTS64 = 217,
 
+    SYS_GETCWD = 79,
+
 
     SYS_EXIT = 60, // exit thread
 
@@ -234,6 +236,8 @@ enum : long
 
     SYS_EXIT_GROUP = 252, // exit full aplication
 
+    SYS_GETCWD = 183,
+
     SYS_EXIT = 1, // exit thread
     SYS_SCHED_GETAFFINITY = 242,
 };
@@ -418,6 +422,8 @@ enum : long
     SYS_GETDENTS64 = 217,
 
     SYS_EXIT_GROUP = 248, // exit full aplication
+
+    SYS_GETCWD =183,
 
     SYS_EXIT = 1, // exit thread
     SYS_SCHED_GETAFFINITY = 241,
@@ -605,6 +611,8 @@ enum : long
     SYS_EXIT_GROUP = 94, // exit full aplication
 
     SYS_EXIT = 93, // exit thread
+
+    SYS_GETCWD = 17,
 
     SYS_SCHED_GETAFFINITY = 123,
 };

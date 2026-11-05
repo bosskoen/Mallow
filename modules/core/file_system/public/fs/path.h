@@ -1,9 +1,12 @@
 #pragma once
 #include <core/libc/mem.h>
 #include <stl/string.h>
+#include <core/io/io.h>
+#include <core/io/format.h>
 
 namespace fs
 {
+
 	struct Path
 	{
 		const char* ptr = nullptr; // declare ptr first (matches init order)
@@ -30,7 +33,10 @@ namespace fs
 			return core::mlwMemcmp(ptr, other.ptr, len) == 0;
 		}
 
-        bool isRoot() const;
+		bool hasRoot() const;
+		isize rootLen() const;
+        bool isRootRelative() const;
+		bool isDriveRelative() const;
 		bool isAbsolute() const;
 		core::CStr fileName() const;
 		Path parent() const;
@@ -46,36 +52,49 @@ namespace fs
 				;
 		}
 
-		// normalize
+
 		// relative
-		// absolute
-		// itorate
 	};
 
-	class Pathbuffer
+	class PathBuffer
 	{
 		core::String buffer{};
-		Pathbuffer(core::String&& s) : buffer(core::move(s)) {};
+		PathBuffer(core::String&& s) : buffer(core::move(s)) {};
 
 	public:
-		Pathbuffer() = default;
-		explicit Pathbuffer(core::CStr s) : buffer(s) {}
-		explicit Pathbuffer(Path p) : buffer(p.toCStr()) {}
+		PathBuffer() = default;
+		explicit PathBuffer(core::CStr s) : buffer(s) {}
+		explicit PathBuffer(Path p) : buffer(p.toCStr()) {}
 
-		MLW_FORCE_INLINE Pathbuffer clone()
+		MLW_FORCE_INLINE PathBuffer clone()
 		{
-			return Pathbuffer{ buffer.clone() };
+			return PathBuffer{ buffer.clone() };
 		}
 		operator Path() const { return Path{ buffer.data(), buffer.len() }; }
 		MLW_FORCE_INLINE core::CStr toCStr() const { return buffer; }
 
 		MLW_FORCE_INLINE void clear() { buffer.clear(); }
+		MLW_FORCE_INLINE char* data() {return buffer.data();}
+		MLW_FORCE_INLINE isize len() const {return buffer.len();}
 
 		void push(Path tail);
 		void pop();
 
 		// noop on unix on window changes every "\\" with '/'
 		void toPortable();
+
+		void normalize();
+
+		static core::Result<PathBuffer, io::IoError> getWorkingDir();
+		static core::Result<PathBuffer, io::IoError> absolute(Path p);
+		core::Result<unit, io::IoError> absolute();
+
+
+		template <core::FormatBuffer Buffer>
+		void format(Buffer &buffer) const { buffer.append(toCStr()); }
 	};
+
+	core::Optional<PathBuffer> relative(Path from, Path to);
+
 
 } // namespace fs

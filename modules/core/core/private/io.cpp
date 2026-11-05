@@ -134,6 +134,8 @@ namespace io
                 return {IoError::Kind::NotADirectory, e};
             case 39:
                 return {IoError::Kind::DirectoryNotEmpty, e};
+            case 34: 
+                return {IoError:Kind::BufferTooSmall, e};
             default:
                 return {IoError::Kind::Other, e};
             }
@@ -753,6 +755,29 @@ DirReader& DirReader::operator=(DirReader&& o) noexcept {
         o.handle_=Handle::invalid(); o.buf_=nullptr; o.len_=0; o.pos_=0; o.first_=false;
     }
     return *this;
+}
+
+core::Result<isize, IoError> getCwdInto(core::CStr buf)
+{
+#if defined(MLW_WINDOWS)
+    // GetCurrentDirectoryW returns required size (incl NUL) if buf too small,
+    // or chars written (excl NUL) on success. Wide -> UTF-8 conversion needed.
+    wchar_t wbuf[4096];
+    DWORD n = GetCurrentDirectoryW(4096, wbuf);
+    if (n == 0) return core::Err{ lastError() };
+    if (n >= 4096) return core::Err{ IoError{ IoError::Kind::Other, 0 } }; // path > 4096 wide chars, rare
+    int need = WideCharToMultiByte(CP_UTF8, 0, wbuf, (int)n, nullptr, 0, nullptr, nullptr);
+    if ((isize)need > buf.len) return core::Err{ IoError{ IoError::Kind::BufferTooSmall, 34 } }; // ERANGE-equiv
+    WideCharToMultiByte(CP_UTF8, 0, wbuf, (int)n, (char*)buf.ptr, (int)buf.len, nullptr, nullptr);
+    return core::Ok{ (isize)need };
+#else
+    // getcwd(buf, size): returns buf on success, -ERANGE if too small.
+    long r = syscall(SYS_GETCWD, (long)buf.ptr, (long)buf.len);
+    if (r < 0) return core::Err{ fromErrno(-r) };
+    // The syscall writes a NUL-terminated string and returns the LENGTH INCLUDING the NUL.
+    // (This differs from the libc wrapper, which returns the pointer — the raw syscall returns length.)
+    return core::Ok{ r > 0 ? r - 1 : 0 };   // length excluding the NUL
+#endif
 }
 
 }

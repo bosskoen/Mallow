@@ -28,7 +28,7 @@ namespace fs
                 if (r.isErr())
                     return core::Err{r.takeError()};
                 if (r.value() == 0)
-                {                                             // file shrank, or hint was stale
+                {                                               // file shrank, or hint was stale
                     out.truncate((isize)(remaining - dst.len)); // trim to what we got
                     return core::Ok{core::move(out)};
                 }
@@ -103,7 +103,7 @@ namespace fs
         return Ok(core::move(s));
     }
 
-    core::Result<unit, io::IoError> createDirAll(core::CStr path)
+    core::Result<unit, io::IoError> createDirAll(Path path)
     {
         char buf[4096];
         if (path.len >= (index_t)sizeof(buf))
@@ -113,12 +113,8 @@ namespace fs
 
         for (index_t i = 1; i <= path.len; ++i)
         {
-            if (i == path.len || buf[i] == '/'
-#ifdef MLW_WINDOWS
-                || buf[i] == '\\'
-#endif
-            )
-            { // '/' only — see gotcha
+            if (i == path.len || Path::isSep(buf[i]))
+            {
                 core::Result<unit, io::IoError> r = io::makeDir(core::CStr{buf, i}, 0755);
                 if (r.isErr() && r.error().kind != io::IoError::Kind::AlreadyExists)
                     return r;
@@ -127,7 +123,7 @@ namespace fs
         return core::Ok{unit{}};
     }
 
-    core::Result<int64, io::IoError> copy(core::CStr from, core::CStr to)
+    core::Result<int64, io::IoError> copy(Path from, Path to)
     {
         core::Result<File, io::IoError> rs = File::open(from, io::OpenMode::Read);
         if (rs.isErr())
@@ -160,38 +156,33 @@ namespace fs
         return core::Ok{total};
     }
 
+    static core::Result<unit, io::IoError> removeDirAllInto(PathBuffer &pathBuf)
+    {
+        TRY(entries, readDirAll(Path{pathBuf}));
 
-
-    static core::Result<unit, io::IoError> removeDirAllInto(core::String& pathBuf)
+        for (const fs::DirEntry &entr : entries)
         {
-            // read entries first — closes the dir fd before we start deleting
-            TRY(entries, readDirAll(core::CStr{ pathBuf }));
+            pathBuf.push(entr.name()); // join child name, correct separator
+            core::CStr cp{pathBuf.data(), pathBuf.len()};
 
-            isize base = pathBuf.len();                 // remember where to truncate back to
-
-            for (const fs::DirEntry& entr : entries)
+            if (entr.isDir())
             {
-                core::CStr nm = entr.name();
-
-                // push "/" + name   (single source of separator truth — swap for Path::isSep later)
-                pathBuf.truncate(base);                 // undo previous child (no-op on first)
-                if (base == 0 || pathBuf.data()[base-1] != '/')
-                    pathBuf.append(core::CStr{ "/", 1 });
-                pathBuf.append(nm);
-
-                core::CStr cp{ pathBuf.data(), pathBuf.len() };
-
-                if (entr.isDir()) { TRY(_, removeDirAllInto(pathBuf)); }  // recurse: buffer grows deeper
-                else               { TRY(_, removeFile(cp)); }            // symlink-to-dir: unlinked, not followed
+                TRY(_, removeDirAllInto(pathBuf));
+            }
+            else
+            {
+                TRY(_, removeFile(cp));
             }
 
-            pathBuf.truncate(base);                     // restore for the caller
-            return removeDir(core::CStr{ pathBuf.data(), pathBuf.len() });
+            pathBuf.pop(); // undo this child before the next sibling
         }
 
-    core::Result<unit, io::IoError> removeDirAll(core::CStr path)
+        return removeDir(Path{pathBuf});
+    }
+
+    core::Result<unit, io::IoError> removeDirAll(Path path)
     {
-        core::String buf{path};
+        PathBuffer buf{path};
         return removeDirAllInto(buf);
     }
 

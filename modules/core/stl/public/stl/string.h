@@ -237,7 +237,7 @@ namespace core
 		// -- capacity ---------------------------------------------------------
 
 		/// \brief Length in bytes (excludes the maintained NUL).
-		isize len() const
+		MLW_FORCE_INLINE isize len() const
 		{
 			return isLong() ? static_cast<isize>(u.l.len)
 							: (SSO_CAP - static_cast<isize>(lastByte()));
@@ -260,6 +260,7 @@ namespace core
 			if (n > capacity())
 				growTo(n);
 		}
+
 
 		// -- access -----------------------------------------------------------
 
@@ -345,6 +346,22 @@ namespace core
 			}
 		}
 
+		void resize(isize n){
+			isize length = len();
+			if (n < length)
+			{
+				truncate(n); // reuse: destroys [n, length), sets length = n
+				return;
+			}
+			if (n > length)
+			{
+				reserve(n); // ensure capacity (panics on OOM, like your other growers)
+				char* d = data();
+				for (isize i = length; i < n; ++i)
+					d[i] = '0';
+				setLen(n);
+			}
+		}
 		// -- compare ----------------------------------------------------------
 
 		bool operator==(const String &o) const { return bytesEqual(o.data(), o.len()); }
