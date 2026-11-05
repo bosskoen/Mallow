@@ -295,7 +295,8 @@ namespace core
         if (e < 0)
         {
             bits &= 0x80000000;
-            parts.integral = mlwBitCast<f32>(bits);;
+            parts.integral = mlwBitCast<f32>(bits);
+            ;
             parts.fractional = x;
             return parts;
         }
@@ -305,11 +306,13 @@ namespace core
         {
             parts.integral = x;
             bits &= 0x80000000;
-            parts.fractional = mlwBitCast<f32>(bits);;
+            parts.fractional = mlwBitCast<f32>(bits);
+            ;
             return parts;
         }
         bits &= ~mask;
-        parts.integral = mlwBitCast<f32>(bits);;
+        parts.integral = mlwBitCast<f32>(bits);
+        ;
         parts.fractional = x - parts.integral;
         return parts;
     }
@@ -317,7 +320,7 @@ namespace core
     // Derived from musl libc (src/math/modf.c). MIT — see file header.
     MLW_FORCE_INLINE constexpr DoubleParts mlwSplit(f64 x) noexcept
     {
-		uint64 bits = mlwBitCast<uint64>(x);
+        uint64 bits = mlwBitCast<uint64>(x);
         uint64 mask;
         int e = (int)(bits >> 52 & 0x7ff) - 0x3ff;
 
@@ -465,7 +468,11 @@ namespace core
         uint64 i;
 
         if (uyi << 1 == 0 || mlwIsNaN(y) || ex == 0x7ff)
-            return (x * y) / (x * y);
+        {
+            if (mlwIsNaN(x) || mlwIsNaN(y))
+                return x + y; // pass an incoming NaN through
+            return NumericLimits<f64>::nan;
+        }
         if (uxi << 1 <= uyi << 1)
         {
             if (uxi << 1 == uyi << 1)
@@ -541,7 +548,11 @@ namespace core
         uint32 i;
 
         if (uyi << 1 == 0 || mlwIsNaN(y) || ex == 0xff)
-            return (x * y) / (x * y);
+        {
+            if (mlwIsNaN(x) || mlwIsNaN(y))
+                return x + y; // pass an incoming NaN through
+            return NumericLimits<f32>::nan;
+        }
         if (uxi << 1 <= uyi << 1)
         {
             if (uxi << 1 == uyi << 1)

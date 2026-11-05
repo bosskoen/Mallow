@@ -68,7 +68,7 @@ bool core::detail::try_join(void* &h, uint32 ms)
 
 #elif defined(MLW_LINUX)
 
-#include "posix/syscall_api.h"
+#include "backend/unix/syscall_api.h"
 #include "libc/mem.h"
 
 // ── Linux threading model ──────────────────────────────────────────────────

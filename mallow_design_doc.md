@@ -32,7 +32,6 @@ Runtime + program entry point; links `core` + `my_app` and produces the executab
 
 ### stl — *planned*
 Container library; the STL replacement.
-- [ ] decide the initial container set + allocator story
 - [ ] make list sicrualr
 - [ ] stress test stl
 - [ ] refrence stable unordered map or maby a uniqpointer stile thing
@@ -42,7 +41,8 @@ Container library; the STL replacement.
 ### io (file handling) — *planned*
 File read/write on top of core's io / writer.
 - [ ] clean up and ducoment stream and fs
-
+test file, director, itoratrs
+document, file, directory, path, itoratrs, acsii, free io functions
 
 ### serde — *planned*
 Serialization. A group folder (like `core`), one module per format so you link only the one
