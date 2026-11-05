@@ -21,7 +21,7 @@ namespace fs
             int64 remaining = szR.value() - posR.value();
             out.resize((isize)remaining); // one allocation, exact size
 
-            core::Span<uint8> dst{out.rawData(), (isize)remaining};
+            core::Span<uint8> dst{out.data(), (isize)remaining};
             while (dst.len > 0)
             {
                 core::Result<isize, io::IoError> r = read(dst); // raw single read
@@ -45,7 +45,7 @@ namespace fs
                     return core::Err{r.takeError()};
                 if (r.value() == 0)
                     break;                         // confirmed EOF
-                out.extendFromPtr(tmp, r.value()); // rare: file grew, append the extra
+                out.append({tmp, r.value()}); // rare: file grew, append the extra
             }
             return core::Ok{core::move(out)};
         }
@@ -59,7 +59,7 @@ namespace fs
                 return core::Err{r.takeError()};
             if (r.value() == 0)
                 break;
-            out.extendFromPtr(tmp, r.value());
+            out.append({tmp, r.value()});
         }
         return core::Ok{core::move(out)};
     }
@@ -99,7 +99,7 @@ namespace fs
             return Err(r.takeError());
         }
         core::String s{};
-        s.append({reinterpret_cast<char *>(r.value().rawData()), r.value().len()});
+        s.append({reinterpret_cast<char *>(r.value().data()), r.value().len()});
         return Ok(core::move(s));
     }
 

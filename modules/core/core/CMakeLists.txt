@@ -50,7 +50,6 @@ target_sources(core
         private/freestanding.cpp
         private/new_imp.cpp
         private/crt_internals.h
-        private/posix/syscall_api.h
         private/math/trivial.cpp
         private/math/cbrt.cpp
         private/math/exp.cpp
@@ -140,6 +139,7 @@ if(MLW_WINDOWS)
     set(CORE_BACKEND private/backend/windows)
 elseif(MLW_LINUX)
     set(CORE_BACKEND private/backend/unix)
+    target_sources(core PRIVATE private/backend/unix/syscall_api.h)
 else()
 message(WARNING "MLW: unknown platform")
 endif()

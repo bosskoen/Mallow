@@ -210,7 +210,7 @@ void fs::PathBuffer::push(Path tail)
 		if (baseRoot >= 2) {
 			buffer.truncate(baseRoot);
 			// if the kept root ends in a separator and the tail starts with one, drop one
-			if (buffer.len() != 0 && Path::isSep(buffer.back()))
+			if (buffer.len() != 0 && Path::isSep(buffer.back().unwrap()))
 				buffer.truncate(buffer.len() - 1);   // strip root's trailing sep; tail supplies it
 			buffer.append(tail.toCStr());            // tail's leading sep is now the single join
 		}
@@ -241,7 +241,7 @@ void fs::PathBuffer::push(Path tail)
 #endif
 
 	// Plain relative: insert exactly one '/' only if neither side already has one.
-	if (buffer.len() != 0 && !Path::isSep(buffer.back()) && !Path::isSep(tail.ptr[0]))
+	if (buffer.len() != 0 && !Path::isSep(buffer.back().unwrap()) && !Path::isSep(tail.ptr[0]))
 		buffer.push('/');
 	buffer.append(tail.toCStr());
 }

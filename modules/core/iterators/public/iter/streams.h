@@ -40,7 +40,7 @@ namespace itorator
                 isize n = filled - pos;
                 if (n > dst.len)
                     n = dst.len;
-                core::mlwMemcpy(dst.ptr, buffer.rawData() + pos, n);
+                core::mlwMemcpy(dst.ptr, buffer.data() + pos, n);
                 pos += n;
                 return core::Ok{n};
             }
@@ -49,7 +49,7 @@ namespace itorator
                 return inner.read(dst);
             // C. Buffer empty + small request: refill one chunk, then serve from it.
             core::Result<isize, io::IoError> r =
-                inner.read(core::Span<uint8>{buffer.rawData(), READ_CHUNK});
+                inner.read(core::Span<uint8>{buffer.data(), READ_CHUNK});
             if (r.isErr())
                 return core::Err{r.takeError()};
             filled = r.value();
@@ -59,7 +59,7 @@ namespace itorator
             isize n = filled;
             if (n > dst.len)
                 n = dst.len;
-            core::mlwMemcpy(dst.ptr, buffer.rawData(), n);
+            core::mlwMemcpy(dst.ptr, buffer.data(), n);
             pos = n;
             return core::Ok{n};
         }
@@ -75,7 +75,7 @@ namespace itorator
             core::Vector<uint8> out;
             if (pos < filled)
             {
-                out.extendFromPtr(buffer.rawData() + pos, filled - pos);
+                out.append({buffer.data() + pos, filled - pos});
                 pos = filled; // buffer now consumed
             }
 
@@ -85,7 +85,7 @@ namespace itorator
 
             // 4. Otherwise append inner's bytes after our buffered prefix.
             core::Vector<uint8> tail = rest.takeValue();
-            out.extendFromPtr(tail.rawData(), tail.len());
+            out.append({tail.data(), tail.len()});
             return core::Ok{core::move(out)};
         }
         core::Result<unit, io::IoError> readExact(core::Span<uint8> dst)
@@ -106,15 +106,15 @@ namespace itorator
         {
             if (pos < filled)
             {
-                return core::Span<const uint8>{buffer.rawData() + pos, filled - pos};
+                return core::Span<const uint8>{buffer.data() + pos, filled - pos};
             }
             core::Result<isize, io::IoError> r =
-                inner.read(core::Span<uint8>{buffer.rawData(), READ_CHUNK});
+                inner.read(core::Span<uint8>{buffer.data(), READ_CHUNK});
             if (r.isErr())
                 return core::Err{r.takeError()};
             filled = r.value();
             pos = 0;
-            return core::Span<const uint8>{buffer.rawData(), filled};
+            return core::Span<const uint8>{buffer.data(), filled};
         }
         void consume(isize n)
         {
@@ -155,7 +155,7 @@ namespace itorator
             {
                 out.reserve(n);
                 for (isize i = 0; i < n; ++i)
-                    out.rawData()[i] = data.ptr[pos + i];
+                    out.data()[i] = data.ptr[pos + i];
                 pos += n;
             }
             return core::Ok{core::move(out)};
@@ -228,7 +228,7 @@ namespace itorator
                 if (f.isErr())
                     return core::Err{f.takeError()};
             }
-            core::mlwMemcpy(buffer.rawData() + len, src.ptr, src.len); 
+            core::mlwMemcpy(buffer.data() + len, src.ptr, src.len); 
             len += src.len;
             return core::Ok{src.len};
         }
@@ -263,7 +263,7 @@ namespace itorator
         {
             if (len == 0)
                 return core::Ok{unit{}};
-            core::Result<unit, io::IoError> r = inner.writeAll(core::Span<const uint8>{buffer.rawData(), len});
+            core::Result<unit, io::IoError> r = inner.writeAll(core::Span<const uint8>{buffer.data(), len});
             len = 0;
             return r;
         }
@@ -284,11 +284,11 @@ class MemWriter
 
         // --- Writer concept ---
         core::Result<isize, io::IoError> write(core::Span<const uint8> src) {
-            buf.extendFromPtr(src.ptr, src.len);
+            buf.append({src.ptr, src.len});
             return core::Ok{ src.len };            // memory never short-writes, never errs
         }
         core::Result<unit, io::IoError> writeAll(core::Span<const uint8> src) {
-            buf.extendFromPtr(src.ptr, src.len);
+            buf.append({src.ptr, src.len});
             return core::Ok{ unit{} };
         }
         core::Result<unit, io::IoError> flush() { return core::Ok{ unit{} }; }
@@ -297,12 +297,12 @@ class MemWriter
         core::Vector<uint8> intoBytes() && { return core::move(buf); }   // move the bytes out
         core::String        intoString() && {                            // bytes -> text
             core::String s;
-            s.append(core::CStr{ (const char*)buf.rawData(), buf.len() });
+            s.append(core::CStr{ (const char*)buf.data(), buf.len() });
             return s;
         }
 
         // --- non-consuming peek, if you want to look without giving up ownership ---
-        core::Span<const uint8> bytes() const { return core::Span<const uint8>{ buf.rawData(), buf.len() }; }
+        core::Span<const uint8> bytes() const { return core::Span<const uint8>{ buf.data(), buf.len() }; }
         isize len() const { return buf.len(); }
     };
 

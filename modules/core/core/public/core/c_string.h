@@ -64,5 +64,16 @@ namespace core
             if(ptr == other.ptr) return true;
             return mlwMemcmp(ptr,other.ptr, len) == 0;
         }
+
+        bool startsWith(CStr prefix) const
+		{
+			return prefix.len <= len && mlwMemcmp(ptr, prefix.ptr, static_cast<usize>(prefix.len)) == 0;
+		}
+
+		bool endsWith(CStr suffix) const
+		{
+			return suffix.len <= len &&
+				   mlwMemcmp(ptr + len - suffix.len, suffix.ptr, static_cast<usize>(suffix.len)) == 0;
+		}
     };
 } // namespace core

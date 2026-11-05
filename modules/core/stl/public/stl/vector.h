@@ -6,650 +6,564 @@
 #include <core/libc/mem.h>
 #include <core/macro.h>
 #include <core/optional.h>
+#include <core/span.h>
 
 /// \file
 /// \brief Growable contiguous array (dynamic array / "vector").
 
 namespace core
 {
-
 	/// \brief Constrains what may be stored in a \ref Vector.
 	///
-	/// A valid element is a non-reference, non-cv-qualified, destructible type
-	/// that can be either copied or moved into storage.
-	/// \note `const`/`volatile` element types are rejected for now (they break
-	///       relocation and the modifier surface); lift the `remove_cv` clause
-	///       if that ever changes.
-	/// \note Per-operation requirements are stricter than the concept: e.g.
-	///       \ref Vector::clone and the copy \ref Vector::push overload also
-	///       require copy-constructibility, so a move-only `T` simply does not
-	///       expose those members.
+	/// A non-reference, non-cv-qualified, destructible type that can be copied
+	/// or moved into storage. Individual members add their own requirements
+	/// (e.g. \ref Vector::clone needs copy-construction), so a move-only `T`
+	/// simply doesn't expose the copying members.
 	template <typename T>
 	concept VectorElement =
 		!is_reference_v<T> && is_destructible_v<T> &&
 		(is_copy_constructible_v<T> || is_move_constructible_v<T>) &&
-		// no voletiles or const for now. wen needed change
 		is_same_v<T, remove_cv_t<T>>;
 
 	/// \ingroup formattable
 	/// \brief A dynamically-sized, contiguous, owning array of `T`.
 	///
-	/// Stores elements in a single heap block obtained from a type-erased
-	/// \ref AnonymousAllocator captured at construction. Because the allocator
-	/// is a runtime value rather than a template parameter, `Vector<T>` is a
-	/// single type regardless of where it allocates, and values allocated from
-	/// different allocators are freely interchangeable.
+	/// Storage comes from a type-erased \ref AnonymousAllocator captured at
+	/// construction, so `Vector<T>` is one type regardless of where it allocates.
 	///
-	/// Elements are only ever *constructed* into and *destroyed* out of storage
-	/// — never assigned — so `T` need not be assignable. Growth relocates by a
-	/// raw byte move for trivially-copyable `T`, and by per-element move-construct
-	/// + destroy otherwise.
+	/// \par Shared container vocabulary
+	///   `Vector` and \ref String expose the same names with the same meaning:
+	///   `len / isEmpty / capacity / reserve / tryReserve / shrinkToFit / clear /
+	///   truncate / resize`, `operator[] / get / front / back / data / slice`,
+	///   `push / pop / append / insert / remove / removeRange`, `find / contains`,
+	///   and an implicit view conversion (\ref Span here, \ref CStr for String).
 	///
-	/// \note Not copyable. Use \ref clone for an explicit deep copy, or move.
+	/// \par Growth
+	///   Operations that grow implicitly (`push`, `append`, `insert`, `resize`)
+	///   use geometric growth: `max(needed, 2 * capacity, INITIAL_CAP)`. Only
+	///   \ref reserve and \ref tryReserve allocate an exact amount.
+	///
+	/// \par Aliasing
+	///   Arguments may refer to this vector's own elements: `v.push(v[0])`,
+	///   `v.insert(0, v.back().unwrap())`, `v.append(v)` and
+	///   `v.resize(n, v[0])` are all safe, even when they trigger a reallocation.
+	///
+	/// Elements are only ever constructed and destroyed in storage, never
+	/// assigned, so `T` need not be assignable.
+	///
+	/// \note Not copyable; use \ref clone, or move.
 	/// \note Sizes and indices are signed (\ref isize).
-	/// \warning On allocation failure the growing operations panic; only
-	///          \ref tryReserve reports failure as a value.
-	/// \tparam T Element type; see \ref VectorElement.
+	/// \warning Growing operations panic on OOM; only \ref tryReserve reports it.
 	template <VectorElement T>
 	class Vector
 	{
-		T *data;
+		static constexpr isize INITIAL_CAP = 8;
+		static constexpr bool TRIVIAL = is_trivially_copyable_v<T>;
+
+		T *ptr;
 		isize length;
 		isize cap;
-		const AnonymousAllocator *allocator;
+		const AnonymousAllocator *alloc;
 
-		static constexpr isize INITIAL_CAP = 8;
-		static constexpr f32 GROWTH_FACTOR = 2.f;
+		// -- storage primitives -----------------------------------------------
+		// Everything below the public line is built from these five, so the
+		// trivial/non-trivial split lives in exactly one place each.
 
-		/// \brief Grow capacity by \ref GROWTH_FACTOR (or to \ref INITIAL_CAP
-		///        from empty), relocating existing elements. Panics on OOM.
-		void grow()
+		static constexpr isize bytes(isize n) { return n * static_cast<isize>(sizeof(T)); }
+
+		T *allocate(isize n) const
 		{
-			const isize new_cap = cap == 0 ? INITIAL_CAP : static_cast<isize>(cap * GROWTH_FACTOR);
-			const isize new_bytes = new_cap * sizeof(T);
+			return static_cast<T *>(alloc->realloc(alloc, nullptr, 0, bytes(n), alignof(T)));
+		}
 
-			if constexpr (is_trivially_copyable_v<T>)
+		void release(T *p, isize n) const
+		{
+			if (p)
+				alloc->realloc(alloc, p, bytes(n), 0, alignof(T));
+		}
+
+		/// Destroy `[p, p + n)`.
+		static void destroy(T *p, isize n)
+		{
+			if constexpr (!is_trivially_destructible_v<T>)
+				for (isize i = 0; i < n; ++i)
+					p[i].~T();
+		}
+
+		/// Move `n` elements from `src` into raw, non-overlapping `dst`; sources are destroyed.
+		static void relocate(T *dst, T *src, isize n)
+		{
+			if constexpr (TRIVIAL)
 			{
-				// memcpy-move is correct → let realloc fuse alloc+move (fast, in-place when possible)
-				void *p = allocator->realloc(allocator, data,
-											 cap * (isize)sizeof(T), new_bytes, alignof(T));
-
-				mlw_debug_assert_msg(p != nullptr, "Vectro::grow failed to realloc");
-				data = static_cast<T *>(p);
+				if (n > 0)
+					mlwMemcpy(dst, src, static_cast<usize>(bytes(n)));
 			}
 			else
 			{
-				// nontrivial move → realloc must NOT copy bytes. Pure alloc, manual relocate, free.
-				void *p = allocator->realloc(allocator, nullptr, 0, new_bytes, alignof(T));
-				mlw_debug_assert_msg(p != nullptr, "Vectro::grow failed to realloc");
-
-				T *fresh = static_cast<T *>(p);
-
-				for (isize i = 0; i < length; ++i)
+				for (isize i = 0; i < n; ++i)
 				{
-					::new (fresh + i) T(core::move(data[i])); // real move ctor
-					data[i].~T();							  // destroy moved-from source
+					::new (dst + i) T(move_if_movable(src[i]));
+					src[i].~T();
 				}
-				if (data)
-					allocator->realloc(allocator, data, cap * (isize)sizeof(T), 0, alignof(T)); // free old
-				data = fresh;
 			}
+		}
 
-			cap = new_cap;
+		/// Shift `[from, length)` by `by` slots. The destination slots must be raw
+		/// (beyond `length` when `by > 0`, already destroyed when `by < 0`). Does
+		/// not change `length`.
+		void shiftTail(isize from, isize by)
+		{
+			const isize n = length - from;
+			if (n <= 0 || by == 0)
+				return;
+			if constexpr (TRIVIAL)
+			{
+				mlwMemmove(ptr + from + by, ptr + from, static_cast<usize>(bytes(n)));
+			}
+			else if (by > 0) // top-down so each source is vacated before it's a destination
+			{
+				for (isize j = length - 1; j >= from; --j)
+				{
+					::new (ptr + j + by) T(move_if_movable(ptr[j]));
+					ptr[j].~T();
+				}
+			}
+			else // bottom-up, same reason
+			{
+				for (isize j = from; j < length; ++j)
+				{
+					::new (ptr + j + by) T(move_if_movable(ptr[j]));
+					ptr[j].~T();
+				}
+			}
+		}
+
+		/// Capacity to grow to so that `need` elements fit.
+		isize nextCapacity(isize need) const
+		{
+			isize c = cap * 2;
+			if (c < INITIAL_CAP)
+				c = INITIAL_CAP;
+			return c < need ? need : c;
+		}
+
+		/// Ensure room for `need` elements, growing geometrically. Panics on OOM.
+		void growFor(isize need)
+		{
+			if (need > cap)
+				reserve(nextCapacity(need));
+		}
+
+		/// True if `p` points into the live elements (so a grow would invalidate it).
+		bool ownsPtr(const T *p) const
+		{
+			return ptr != nullptr && reinterpret_cast<uptr>(p) >= reinterpret_cast<uptr>(ptr) &&
+				   reinterpret_cast<uptr>(p) < reinterpret_cast<uptr>(ptr + length);
+		}
+
+		/// Slow path of \ref emplace: the new element is built *before* the old
+		/// block is released, so `args` may refer to existing elements.
+		template <typename... Args>
+		T &emplaceGrow(Args &&...args)
+		{
+			const isize nc = nextCapacity(length + 1);
+			if constexpr (TRIVIAL)
+			{
+				T tmp(core::forward<Args>(args)...); // free for trivial T; lets realloc grow in place
+				reserve(nc);
+				::new (ptr + length) T(move_if_movable(tmp)); // trivial T may still be move-only
+			}
+			else
+			{
+				T *fresh = allocate(nc);
+				mlw_debug_assert_msg(fresh != nullptr, "Vector: out of memory");
+				::new (fresh + length) T(core::forward<Args>(args)...);
+				relocate(fresh, ptr, length);
+				release(ptr, cap);
+				ptr = fresh;
+				cap = nc;
+			}
+			return ptr[length++];
+		}
+
+		void takeFrom(Vector &o)
+		{
+			ptr = o.ptr;
+			length = o.length;
+			cap = o.cap;
+			alloc = o.alloc;
+			o.ptr = nullptr;
+			o.length = 0;
+			o.cap = 0;
 		}
 
 	public:
-		// -- lifetime -----------------------------------------------------
+		// -- lifetime ---------------------------------------------------------
 
-		/// \brief Construct an empty vector using \ref default_allocator.
-		Vector() : data(nullptr), length(0), cap(0), allocator(&core::default_allocator()) {}
+		/// \brief Empty vector on \ref default_allocator. Does not allocate.
+		Vector() : Vector(&core::default_allocator()) {}
 
-		/// \brief Construct an empty vector that allocates from \p alloc.
-		/// \param alloc Allocator captured by value and used for the vector's
-		///              lifetime.
-		explicit Vector(const AnonymousAllocator *alloc) : data(nullptr), length(0), cap(0), allocator(alloc) {}
+		/// \brief Empty vector that allocates from \p allocator. Does not allocate.
+		explicit Vector(const AnonymousAllocator *allocator) : ptr(nullptr), length(0), cap(0), alloc(allocator) {}
 
-		/// \brief Deleted: vectors are not implicitly copyable.
-		/// \see clone
 		Vector(const Vector &) = delete;
-		/// \copydoc Vector(const Vector&)
 		Vector &operator=(const Vector &) = delete;
 
-		/// \brief Return a deep copy: a new vector with copies of every element.
-		///
-		/// The copy uses the same allocator as `*this`. Trivially-copyable
-		/// elements are bulk-copied; otherwise each element is copy-constructed.
-		/// \return A vector of the same length with element-wise copies.
-		/// \warning Panics on allocation failure.
-		/// \note Available only when `T` is copy-constructible.
-		Vector clone() const
-			requires is_copy_constructible_v<T>
-		{
-			Vector ret{allocator};
-			if (cap == 0)
-				return ret; // already {nullptr, 0, 0} from the ctor
+		/// \brief Take \p other's storage. \post \p other is empty and valid.
+		Vector(Vector &&other) { takeFrom(other); }
 
-			ret.data = static_cast<T *>(
-				allocator->realloc(allocator, nullptr, 0, cap * static_cast<isize>(sizeof(T)), alignof(T)));
-			mlw_debug_assert_msg(ret.data != nullptr, "Vector::clone allocation returned nullptr");
-			ret.cap = cap;
-
-			if constexpr (is_trivially_copyable_v<T>)
-			{
-				core::mlwMemcpy(ret.data, data, (usize)(length * (isize)sizeof(T)));
-			}
-			else
-			{
-				for (isize i = 0; i < length; ++i)
-				{
-					::new (ret.data + i) T(static_cast<const T &>(data[i])); // lvalue -> copy
-				}
-			}
-
-			ret.length = length;
-			return ret;
-		};
-
-		/// \brief Destroy all elements and release the storage.
-		///
-		/// Leaves the vector valid and empty (data null, len/cap zero), so it is
-		/// safe to reuse or destroy afterward. Idempotent.
-		void deinit()
-		{
-			if constexpr (!is_trivially_destructible_v<T>)
-			{
-				for (isize i = 0; i < length; ++i)
-				{
-					data[i].~T();
-				}
-			}
-			if (data != nullptr)
-				data = static_cast<T *>(allocator->realloc(allocator, data, cap * sizeof(T), 0, alignof(T)));
-
-			length = 0;
-			cap = 0;
-		};
-
-		/// \brief Move-construct, taking ownership of \p other's storage.
-		/// \post \p other is left empty and valid.
-		Vector(Vector &&other) : data(other.data), length(other.length), cap(other.cap), allocator(other.allocator)
-		{
-			other.data = nullptr;
-			other.length = 0;
-			other.cap = 0;
-		};
-
-		/// \brief Move-assign: release current storage, then take \p other's.
-		/// \post \p other is left empty and valid. Self-assignment is a no-op.
+		/// \brief Free ours, take \p other's. Self-assignment is a no-op.
 		Vector &operator=(Vector &&other)
 		{
 			if (this != &other)
 			{
 				deinit();
-				new (this) Vector{move(other)};
+				takeFrom(other);
 			}
 			return *this;
-		};
+		}
 
-		/// \brief Destroy all elements and free storage.
-		~Vector() { deinit(); };
+		~Vector() { deinit(); }
 
-		// -- capacity -----------------------------------------------------
+		/// \brief Destroy all elements and free storage. Idempotent; the vector
+		///        stays valid and reusable on the same allocator.
+		void deinit()
+		{
+			clear();
+			release(ptr, cap);
+			ptr = nullptr;
+			cap = 0;
+		}
+
+		/// \brief Deep copy (element-wise copy) on the same allocator.
+		Vector clone() const
+			requires is_copy_constructible_v<T>
+		{
+			Vector out{alloc};
+			out.append(*this);
+			return out;
+		}
+
+		/// \brief The allocator this vector was built with.
+		const AnonymousAllocator *allocator() const { return alloc; }
+
+		// -- size & capacity --------------------------------------------------
 
 		isize len() const { return length; }
-
-		/// \brief True if the vector holds no elements.
 		MLW_FORCE_INLINE bool isEmpty() const { return length == 0; }
+		/// \brief Elements that fit before the next reallocation.
+		isize capacity() const { return cap; }
 
-		/// \brief Ensure capacity for at least \p n elements *total*.
-		///
-		/// No-op if `n <= capacity`. Never shrinks. This is the only operation
-		/// that reports allocation failure rather than panicking.
-		/// \param n Requested total capacity in elements.
-		/// \return `true` on success; `false` if the allocator could not satisfy
-		///         the request (the vector is left unchanged and valid).
-		/// \note `n` is a *total*, not an increment;
+		/// \brief Ensure capacity for at least \p n elements in total (exact, no
+		///        growth factor). Never shrinks.
+		/// \return `false` on OOM, leaving the vector unchanged.
 		bool tryReserve(isize n)
 		{
 			if (n <= cap)
 				return true;
-
-			const isize new_bytes = n * (isize)sizeof(T);
-
-			if constexpr (is_trivially_copyable_v<T>)
+			if constexpr (TRIVIAL)
 			{
-				// memcpy-move is correct → let realloc fuse alloc+move (fast, in-place when possible)
-				void *p = allocator->realloc(allocator, data,
-											 cap * (isize)sizeof(T), new_bytes, alignof(T));
+				// byte-moving is valid: let realloc grow in place when it can
+				void *p = alloc->realloc(alloc, ptr, bytes(cap), bytes(n), alignof(T));
 				if (!p)
 					return false;
-				data = static_cast<T *>(p);
+				ptr = static_cast<T *>(p);
 			}
 			else
 			{
-				// nontrivial move → realloc must NOT copy bytes. Pure alloc, manual relocate, free.
-				void *p = allocator->realloc(allocator, nullptr, 0, new_bytes, alignof(T));
-				if (!p)
-					return false; // old buffer untouched, still valid
-				T *fresh = static_cast<T *>(p);
-
-				for (isize i = 0; i < length; ++i)
-				{
-					::new (fresh + i) T(core::move(data[i])); // real move ctor
-					data[i].~T();							  // destroy moved-from source
-				}
-				if (data)
-					allocator->realloc(allocator, data, cap * (isize)sizeof(T), 0, alignof(T)); // free old
-				data = fresh;
+				T *fresh = allocate(n);
+				if (!fresh)
+					return false;
+				relocate(fresh, ptr, length);
+				release(ptr, cap);
+				ptr = fresh;
 			}
-
 			cap = n;
 			return true;
 		}
 
-		/// \brief Ensure capacity for at least \p n elements total; panic on OOM.
-		/// \param n Requested total capacity in elements.
-		/// \see tryReserve for the non-panicking form.
+		/// \brief As \ref tryReserve, but panics on OOM.
 		void reserve(isize n)
 		{
-			// maby panic or let the os kill you/ UB
-			bool x = tryReserve(n);
-			mlw_debug_assert_msg(x, "Vector::reserve OOM");
-		};
+			const bool ok = tryReserve(n);
+			mlw_debug_assert_msg(ok, "Vector: out of memory");
+		}
 
-		/// \brief Best-effort request to release unused capacity.
-		///
-		/// Reduces reported capacity to the current length. Reclamation is
-		/// allocator-dependent and never guaranteed; the operation never
-		/// relocates elements, so pointers/references remain valid.
+		/// \brief Drop unused capacity. Never relocates (pointers stay valid);
+		///        actual reclamation is up to the allocator.
 		void shrinkToFit()
 		{
 			if (cap == length)
 				return;
 			if (length == 0)
-			{
-				deinit();
-				return;
-			} // frees; nulls data/len/cap
-
-			// shrink never relocates: same ptr back, no elements moved, regardless of T.
-			// realloc reclaims in place where it can (medium) and no-ops where it can't (small/OS).
-			allocator->realloc(allocator, data,
-							   cap * (isize)sizeof(T), length * (isize)sizeof(T), alignof(T));
+				return deinit();
+			alloc->realloc(alloc, ptr, bytes(cap), bytes(length), alignof(T));
 			cap = length;
 		}
 
-		/// \brief Shrink the length to \p n, destroying the removed tail.
-		///
-		/// No-op if `n >= len`. Capacity is unchanged.
-		/// \param n New length; elements in `[n, len)` are destroyed.
-		/// \note does not shrink capasety
+		/// \brief Destroy every element; capacity is kept.
+		void clear() { truncate(0); }
+
+		/// \brief Shrink to \p n elements, destroying the tail. No-op if `n >= len`.
 		void truncate(isize n)
 		{
-			if (n < length)
-			{
-				if constexpr (!is_trivially_destructible_v<T>)
-				{
-					for (isize i = n; i < length; ++i)
-					{
-						data[i].~T();
-					}
-				}
-				length = n;
-			}
+			mlw_debug_assert_msg(n >= 0, "Vector::truncate negative length");
+			if (n >= length)
+				return;
+			destroy(ptr + n, length - n);
+			length = n;
 		}
 
-		/// \brief Resize to exactly \p n elements.
-		///        Growing default-constructs the new tail; shrinking destroys the removed tail.
-		/// \note Only available when T is default-constructible (growing must construct).
-		///       Capacity may grow; it is never reduced.
+		/// \brief Resize to \p n; new elements are default-constructed.
 		void resize(isize n)
-			requires core::is_default_constructible_v<T>
+			requires is_default_constructible_v<T>
 		{
-			if (n < length)
-			{
-				truncate(n); // reuse: destroys [n, length), sets length = n
-				return;
-			}
-			if (n > length)
-			{
-				reserve(n); // ensure capacity (panics on OOM, like your other growers)
-				for (isize i = length; i < n; ++i)
-					::new (data + i) T(); // default-construct the new elements
-				length = n;
-			}
-			// n == length: nothing to do
+			if (n <= length)
+				return truncate(n);
+			growFor(n);
+			while (length < n)
+				::new (ptr + length++) T();
 		}
 
-		/// \brief Resize to \p n elements, filling any new tail with copies of \p value.
+		/// \brief Resize to \p n; new elements are copies of \p value.
 		void resize(isize n, const T &value)
-			requires core::is_copy_constructible_v<T>
+			requires is_copy_constructible_v<T>
 		{
-			if (n < length)
+			if (n <= length)
+				return truncate(n);
+			if (n > cap && ownsPtr(&value)) // value is ours and about to move
 			{
-				truncate(n);
-				return;
+				const T fill(value);
+				return resize(n, fill); // fill isn't ours, so this takes the fast path
 			}
-			if (n > length)
-			{
-				reserve(n);
-				for (isize i = length; i < n; ++i)
-					::new (data + i) T(value); // copy-construct from the fill value
-				length = n;
-			}
+			growFor(n);
+			while (length < n)
+				::new (ptr + length++) T(value);
 		}
 
-		/// \brief Destroy all elements, keeping capacity.
-		void clear()
-		{
-			if constexpr (!is_trivially_destructible_v<T>)
-			{
-				for (isize i = 0; i < length; ++i)
-				{
-					data[i].~T();
-				}
-			}
-			length = 0;
-		}
+		// -- access -----------------------------------------------------------
 
-		// -- access -------------------------------------------------------
-
-		/// \brief Unchecked element access. \pre `0 <= i < len`.
-		/// \param i Element index.
+		/// \brief Element access, bounds-checked in debug builds only.
 		T &operator[](isize i)
 		{
-			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::operator[] out of bounds max: {}; acsesed: {}", length, i);
-			return data[i];
+			mlw_debug_assert_msg(i >= 0 && i < length, "Vector index {} out of range (len {})", i, length);
+			return ptr[i];
 		}
-		/// \copydoc operator[](isize)
 		const T &operator[](isize i) const
 		{
-			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::operator[] out of bounds max: {}; acsesed: {}", length, i);
-			return data[i];
+			mlw_debug_assert_msg(i >= 0 && i < length, "Vector index {} out of range (len {})", i, length);
+			return ptr[i];
 		}
 
-		/// \brief Checked element access.
-		/// \param i Element index.
-		/// \return Some reference to the element, or None if `i` is out of range
-		///         (including negative).
+		/// \brief Checked access: None if \p i is out of range (including negative).
 		Optional<T &> get(isize i)
 		{
 			if (i < 0 || i >= length)
-			{
 				return nullptr;
-			}
-			else
-			{
-				return Optional<T &>{data[i]};
-			}
+			return Optional<T &>{ptr[i]};
 		}
-		/// \copydoc get(isize)
 		Optional<const T &> get(isize i) const
 		{
 			if (i < 0 || i >= length)
-			{
 				return nullptr;
-			}
-			else
-			{
-				return Optional<const T &>{data[i]};
-			}
-		}
-		/// \brief The first element, or None if empty.
-		Optional<T &> front()
-		{
-			if (length == 0)
-			{
-				return nullptr;
-			}
-			return Optional<T &>{data[0]};
-		}
-		/// \copydoc front()
-		Optional<const T &> front() const
-		{
-			if (length == 0)
-			{
-				return nullptr;
-			}
-			return Optional<const T &>{data[0]};
+			return Optional<const T &>{ptr[i]};
 		}
 
-		/// \brief The last element, or None if empty.
-		Optional<T &> back()
+		/// \brief First / last element, or None when empty.
+		Optional<T &> front() { return get(0); }
+		Optional<const T &> front() const { return get(0); }
+		Optional<T &> back() { return get(length - 1); }
+		Optional<const T &> back() const { return get(length - 1); }
+
+		/// \brief Pointer to the elements (null while nothing is allocated).
+		/// \warning Invalidated by anything that grows.
+		T *data() { return ptr; }
+		const T *data() const { return ptr; }
+
+		/// \brief Non-owning view of all elements. \warning Invalidated by growth.
+		operator Span<T>() { return Span<T>(ptr, length); }
+		operator Span<const T>() const { return Span<const T>(ptr, length); }
+
+		/// \brief Non-owning view of `[start, start + count)`.
+		Span<T> slice(isize start, isize count)
 		{
-			if (length == 0)
-			{
-				return nullptr;
-			}
-			return Optional<T &>{data[length - 1]};
+			mlw_debug_assert_msg(start >= 0 && count >= 0 && start + count <= length, "Vector::slice out of range");
+			return Span<T>(ptr + start, count);
 		}
-		/// \copydoc back()
-		Optional<const T &> back() const
+		Span<const T> slice(isize start, isize count) const
 		{
-			if (length == 0)
-			{
-				return nullptr;
-			}
-			return Optional<const T &>{data[length - 1]};
-		}
-
-		/// \brief Pointer to the underlying storage (may be null when empty).
-		/// \warning Invalidated by any operation that grows or relocates.
-		T *rawData() { return data; }
-		/// \copydoc rawData()
-		const T *rawData() const { return data; }
-
-		// -- modifiers -----------------------------------------------------
-
-		/// \brief Append a copy of \p v. Grows if needed; panics on OOM.
-		/// \note Available only when `T` is copy-constructible.
-		void push(const T &v)
-			requires is_copy_constructible_v<T>
-		{
-			if (length == cap)
-				grow();
-			::new (data + length) T(v); // lvalue → copy ctor
-			++length;
+			mlw_debug_assert_msg(start >= 0 && count >= 0 && start + count <= length, "Vector::slice out of range");
+			return Span<const T>(ptr + start, count);
 		}
 
-		/// \brief Append \p v by moving. Grows if needed; panics on OOM.
-		/// \note Available only when `T` is move-constructible.
-		void push(T &&v)
-			requires is_move_constructible_v<T>
-		{
-			if (length == cap)
-				grow();
-			::new (data + length) T(core::move(v)); // v is a NAMED rvalue ref = lvalue → must move()
-			++length;
-		}
+		// -- modifiers --------------------------------------------------------
 
-		/// \brief Append a copy of \p v without checking capacity.
-		/// \pre `len < capacity` (caller must have reserved). \warning No bounds
-		///      or capacity check in release; writes past capacity are UB.
-		void pushAssumeCapacity(const T &v)
-			requires is_copy_constructible_v<T>
-		{
-			new (data + length) T(v);
-			++length;
-		}
-		/// \brief Append \p v by moving without checking capacity.
-		/// \pre `len < capacity`. \warning As \ref pushAssumeCapacity(const T&).
-		void pushAssumeCapacity(T &&v)
-			requires is_move_constructible_v<T>
-		{
-			new (data + length) T(core::move(v));
-			++length;
-		}
-
-		/// \brief Construct a new element in place from \p args and append it.
-		///
-		/// Grows if needed; panics on OOM. No intermediate `T` is created.
-		/// \param args Forwarded to `T`'s constructor.
-		/// \return Reference to the newly-constructed element.
+		/// \brief Construct an element in place at the back. Returns a reference to it.
 		template <typename... Args>
 		T &emplace(Args &&...args)
 			requires is_constructible_v<T, Args...>
 		{
-			if (length == cap)
-				grow();
-			::new (data + length) T(core::forward<Args>(args)...); // forward: preserve each arg's category
-			++length;
-			return data[length - 1];
+			if (length == cap) [[unlikely]]
+				return emplaceGrow(core::forward<Args>(args)...);
+			::new (ptr + length) T(core::forward<Args>(args)...);
+			return ptr[length++];
 		}
 
-		/// \brief Remove and return the last element.
-		/// \pre `!isEmpty()`. \return The removed element.
-		T pop()
-		{
-			mlw_debug_assert_msg(!isEmpty(), "Vector::pop poped a empty vector");
-			T ret{move_if_movable(data[length - 1])};
-
-			if constexpr (!is_trivially_destructible_v<T>)
-			{
-				data[length - 1].~T();
-			}
-
-			--length;
-			return ret;
-		}
-
-		/// \brief Insert \p v at index \p i, shifting later elements right.
-		///
-		/// `i == len` appends. Grows if needed; panics on OOM.
-		/// \pre `0 <= i <= len`.
-		/// \warning \p v must not alias this vector's storage (a grow may
-		///          relocate it mid-operation).
-		void insert(isize i, const T &v)
+		void push(const T &v)
 			requires is_copy_constructible_v<T>
 		{
-			mlw_debug_assert_msg(i >= 0 && i <= length, "Vector::insert index out of range");
-			reserve(length + 1); // may relocate all elements; panics on OOM
-
-			if constexpr (is_trivially_copyable_v<T>)
-			{
-				mlwMemmove(data + i + 1, data + i, static_cast<usize>((length - i) * (isize)sizeof(T)));
-			}
-			else
-			{
-				// top-down: each element move-constructs into the raw slot above it,
-				// then its old slot is destroyed -> becomes the next raw slot.
-				for (isize j = length; j > i; --j)
-				{
-					::new (data + j) T(move_if_movable(data[j - 1]));
-					if constexpr (!is_trivially_destructible_v<T>)
-						data[j - 1].~T();
-				}
-				// slot i is now raw (destroyed above); construct into the hole below.
-			}
-			::new (data + i) T(v); // lvalue -> copy
-			++length;
+			emplace(v);
 		}
-
-		/// \brief Insert \p v at \p i by moving, shifting later elements right.
-		/// \copydetails insert(isize, const T&)
-		void insert(isize i, T &&v)
+		void push(T &&v)
 			requires is_move_constructible_v<T>
 		{
-			mlw_debug_assert_msg(i >= 0 && i <= length, "Vector::insert index out of range");
-			reserve(length + 1);
-
-			if constexpr (is_trivially_copyable_v<T>)
-			{
-				mlwMemmove(data + i + 1, data + i, static_cast<usize>((length - i) * (isize)sizeof(T)));
-			}
-			else
-			{
-				for (isize j = length; j > i; --j)
-				{
-					::new (data + j) T(move_if_movable(data[j - 1]));
-					if constexpr (!is_trivially_destructible_v<T>)
-						data[j - 1].~T();
-				}
-			}
-			::new (data + i) T(core::move(v)); // named rvalue ref is an lvalue -> move() it
-			++length;
+			emplace(core::move(v));
 		}
 
-		/// \brief Remove the element at \p i, shifting later elements left.
-		///
-		/// Order-preserving; O(len - i).
-		/// \pre `0 <= i < len`. \return The removed element.
-		T remove(isize i)
-		{
-			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::remove index out of range");
-
-			T ret{move_if_movable(data[i])}; // extract the element to return
-
-			if constexpr (is_trivially_copyable_v<T>)
-			{
-				mlwMemmove(data + i, data + i + 1, static_cast<usize>((length - i - 1) * (isize)sizeof(T)));
-				// trivial: no source destroy needed; --len drops the now-duplicate tail slot
-			}
-			else
-			{
-				if constexpr (!is_trivially_destructible_v<T>)
-					data[i].~T(); // moved-from source destroyed -> slot i raw
-
-				for (isize j = i; j < length - 1; ++j)
-				{
-					::new (data + j) T(move_if_movable(data[j + 1]));
-					if constexpr (!is_trivially_destructible_v<T>)
-						data[j + 1].~T(); // source destroyed -> next raw slot
-				}
-			}
-			--length;
-			return ret;
-		}
-
-		/// \brief Remove the element at \p i by swapping in the last element.
-		///
-		/// O(1); does **not** preserve order.
-		/// \pre `0 <= i < len`. \return The removed element.
-		T swapRemove(isize i)
-		{
-			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::swapRemove index out of range");
-
-			T ret{move_if_movable(data[i])};
-			if constexpr (!is_trivially_destructible_v<T>)
-				data[i].~T(); // slot i now raw
-
-			if (i != length - 1)
-			{ // refill from the last element
-				::new (data + i) T(move_if_movable(data[length - 1]));
-				if constexpr (!is_trivially_destructible_v<T>)
-					data[length - 1].~T();
-			}
-			--length;
-			return ret;
-		}
-
-		/// \brief Append copies of \p n elements read from \p p.
-		///
-		/// Grows if needed; panics on OOM.
-		/// \param p Source of \p n contiguous elements; must not alias this
-		///          vector's storage.
-		/// \param n Number of elements to copy (must be `>= 0`).
-		/// \note Available only when `T` is copy-constructible.
-		void extendFromPtr(const T *p, isize n)
+		/// \brief \ref push without the capacity check. \pre `len() < capacity()`.
+		void pushAssumeCapacity(const T &v)
 			requires is_copy_constructible_v<T>
 		{
-			mlw_debug_assert_msg(n >= 0, "Vector::extendFromPtr negative count");
-			if (n == 0)
-				return;
-			reserve(length + n); // panics on OOM; MAX_ALLOC guard lives in reserve
+			mlw_debug_assert_msg(length < cap, "Vector::pushAssumeCapacity without capacity");
+			::new (ptr + length++) T(v);
+		}
+		void pushAssumeCapacity(T &&v)
+			requires is_move_constructible_v<T>
+		{
+			mlw_debug_assert_msg(length < cap, "Vector::pushAssumeCapacity without capacity");
+			::new (ptr + length++) T(core::move(v));
+		}
 
-			if constexpr (is_trivially_copyable_v<T>)
+		/// \brief Append copies of every element of \p items (may be a view of this vector).
+		void append(Span<const T> items)
+			requires is_copy_constructible_v<T>
+		{
+			const isize n = items.len;
+			if (n <= 0)
+				return;
+			if (ownsPtr(items.ptr)) // self-append: re-find the source after a possible move
 			{
-				mlwMemcpy(data + length, p, static_cast<usize>(n * (isize)sizeof(T))); // non-overlapping
+				const isize off = items.ptr - ptr;
+				growFor(length + n);
+				items.ptr = ptr + off;
 			}
 			else
 			{
-				for (isize j = 0; j < n; ++j)
-					::new (data + length + j) T(p[j]); // copy-construct; source retained
+				growFor(length + n);
 			}
+			if constexpr (TRIVIAL)
+				mlwMemcpy(ptr + length, items.ptr, static_cast<usize>(bytes(n)));
+			else
+				for (isize i = 0; i < n; ++i)
+					::new (ptr + length + i) T(items.ptr[i]);
 			length += n;
 		}
 
+		/// \brief Construct an element in place at index \p i, shifting later ones right.
+		/// \pre `0 <= i <= len()`. `i == len()` appends.
+		template <typename... Args>
+		T &emplaceAt(isize i, Args &&...args)
+			requires is_constructible_v<T, Args...>
+		{
+			mlw_debug_assert_msg(i >= 0 && i <= length, "Vector::insert index {} out of range (len {})", i, length);
+			if (i == length)
+				return emplace(core::forward<Args>(args)...);
+			T tmp(core::forward<Args>(args)...); // built first: args may refer to elements we shift
+			growFor(length + 1);
+			shiftTail(i, 1);
+			::new (ptr + i) T(move_if_movable(tmp));
+			++length;
+			return ptr[i];
+		}
+
+		void insert(isize i, const T &v)
+			requires is_copy_constructible_v<T>
+		{
+			emplaceAt(i, v);
+		}
+		void insert(isize i, T &&v)
+			requires is_move_constructible_v<T>
+		{
+			emplaceAt(i, core::move(v));
+		}
+
+		/// \brief Remove and return the last element. \pre `!isEmpty()`.
+		T pop()
+		{
+			mlw_debug_assert_msg(length > 0, "Vector::pop on empty vector");
+			T out(move_if_movable(ptr[length - 1]));
+			destroy(ptr + --length, 1);
+			return out;
+		}
+
+		/// \brief Remove and return element \p i, keeping order. O(len - i).
+		T remove(isize i)
+		{
+			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::remove index {} out of range (len {})", i, length);
+			T out(move_if_movable(ptr[i]));
+			destroy(ptr + i, 1);
+			shiftTail(i + 1, -1);
+			--length;
+			return out;
+		}
+
+		/// \brief Remove and return element \p i by moving the last one into its
+		///        place. O(1); does **not** keep order.
+		T swapRemove(isize i)
+		{
+			mlw_debug_assert_msg(i >= 0 && i < length, "Vector::swapRemove index {} out of range (len {})", i, length);
+			T out(move_if_movable(ptr[i]));
+			destroy(ptr + i, 1);
+			if (i != --length)
+			{
+				::new (ptr + i) T(move_if_movable(ptr[length]));
+				destroy(ptr + length, 1);
+			}
+			return out;
+		}
+
+		/// \brief Destroy `[start, start + count)`, shifting later elements left.
+		void removeRange(isize start, isize count)
+		{
+			mlw_debug_assert_msg(start >= 0 && count >= 0 && start + count <= length, "Vector::removeRange out of range");
+			destroy(ptr + start, count);
+			shiftTail(start + count, -count);
+			length -= count;
+		}
+
+		// -- search & compare -------------------------------------------------
+
+		/// \brief Index of the first element equal to \p value, or None.
+		Optional<isize> find(const T &value) const
+			requires requires(const T &a) { a == a; }
+		{
+			for (isize i = 0; i < length; ++i)
+				if (ptr[i] == value)
+					return Optional<isize>{i};
+			return nullptr;
+		}
+
+		bool contains(const T &value) const
+			requires requires(const T &a) { a == a; }
+		{
+			return find(value).isSome();
+		}
+
+		/// \brief Same length and pairwise-equal elements.
+		bool operator==(const Vector &o) const
+			requires requires(const T &a) { a == a; }
+		{
+			if (length != o.length)
+				return false;
+			for (isize i = 0; i < length; ++i)
+				if (!(ptr[i] == o.ptr[i]))
+					return false;
+			return true;
+		}
+
+		// -- format -----------------------------------------------------------
+
+		/// \brief Formats as `{a, b, c}`.
 		template <FormatBuffer Buffer>
 			requires(FormattableValue<T, Buffer>)
 		void format(Buffer &buffer) const
@@ -659,52 +573,42 @@ namespace core
 			{
 				if (i != 0)
 					buffer.append(CStr(", "));
-				detail::formatValue(buffer, data[i]); // see below re: mlw_write vs formatValue
+				detail::formatValue(buffer, ptr[i]);
 			}
 			buffer.append('}');
 		}
 
-		// ── iteration ─────────────────────────────────────────────────────────
-		// A Vector is contiguous, so its iterator is simply a pointer. Range-for
-		// needs only begin()/end(); pointer arithmetic gives ++, *, and != for free.
+		// -- iteration --------------------------------------------------------
+		// Contiguous, so the iterator is a plain pointer. Invalidated by growth.
 
-		/// \brief Iterator to the first element (a raw `T*`).
-		/// \warning Invalidated by any operation that grows or relocates storage.
-		T *begin() { return data; }
-		/// \brief Iterator one past the last element.
-		T *end() { return data + length; }
+		T *begin() { return ptr; }
+		T *end() { return ptr + length; }
+		const T *begin() const { return ptr; }
+		const T *end() const { return ptr + length; }
+		const T *cbegin() const { return ptr; }
+		const T *cend() const { return ptr + length; }
 
-		/// \copydoc begin()
-		const T *begin() const { return data; }
-		/// \copydoc end()
-		const T *end() const { return data + length; }
-
-		/// \brief Const iterator to the first element, even on a non-const vector.
-		const T *cbegin() const { return data; }
-		/// \brief Const iterator one past the last element.
-		const T *cend() const { return data + length; }
-
-		struct VecDrainer
+		/// \brief Consuming iterator: owns the vector and yields each element by move.
+		struct Drainer
 		{
-			Vector v; // OWNED — moved in, not a reference
+			Vector v;
 			isize index = 0;
 			using Item = T;
 
-			VecDrainer(Vector &&src) : v(core::move(src)), index(0) {}
-			VecDrainer(VecDrainer &&) = default;
-			VecDrainer(const VecDrainer &) = delete;
+			explicit Drainer(Vector &&src) : v(core::move(src)) {}
+			Drainer(Drainer &&) = default;
+			Drainer(const Drainer &) = delete;
 
-			core::Optional<T> next()
+			Optional<T> next()
 			{
 				if (index >= v.len())
-					return {}; // just stop — NO cleanup here
-				core::Optional<T> out{core::optional_in_place, core::move_if_movable(v.data[index])};
-				++index;
-				return out;
+					return {};
+				return Optional<T>{optional_in_place, move_if_movable(v.ptr[index++])};
 			}
-
-			// NO custom destructor needed — ~Vector runs automatically and does exactly the right thing
+			// ~Vector destroys the (moved-from) elements and frees the block.
 		};
-		VecDrainer drain() && { return {core::move(*this)}; }
+
+		/// \brief Turn the vector into a \ref Drainer (`core::move(v).drain()`).
+		Drainer drain() && { return Drainer(core::move(*this)); }
 	};
-}
+} // namespace core

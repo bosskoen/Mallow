@@ -509,7 +509,7 @@ namespace core
 
         struct Drainer
         {
-            List list; // OWNED — moved in (same trick as VecDrainer)
+            List list; // OWNED — moved in (same trick as Vector::Drainer)
             using Item = T;
 
             explicit Drainer(List &&src) : list(core::move(src)) {}

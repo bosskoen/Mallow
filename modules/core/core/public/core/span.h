@@ -20,6 +20,11 @@ namespace core
 
         constexpr explicit Span(CStr s) requires same_as<T, const char> : ptr(s.ptr), len(s.len) {}
 
+        /// \brief A mutable view converts to a read-only one (`Span<int>` -> `Span<const int>`).
+        template <typename U>
+            requires same_as<const U, T> && (!same_as<U, T>)
+        constexpr Span(Span<U> s) : ptr(s.ptr), len(s.len) {}
+
         constexpr T&       operator[](isize i)       { return ptr[i]; }   // + optional debug assert
         constexpr const T& operator[](isize i) const { return ptr[i]; }
 

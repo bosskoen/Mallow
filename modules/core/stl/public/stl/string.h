@@ -4,10 +4,10 @@
 #include <core/c_string.h>
 #include <core/compilers.h>
 #include <core/macro.h>
-#include <core/libc/mem.h> // mlwMemcpy
+#include <core/optional.h>
+#include <core/libc/mem.h>
 #include <core/memory/anonymous_allocator.h>
-#include <core/hash.h> // core::Hash primary + core::mix64 for Hash<String>
-					   // (consider factoring those into a light core/hash.h)
+#include <core/hash.h>
 
 /// \file
 /// \brief Owning UTF-8-agnostic byte string with small-string optimization (SSO).
@@ -17,41 +17,41 @@ namespace core
 	/// \ingroup formattable
 	/// \brief A growable, owning string of bytes with small-string optimization.
 	///
+	/// Uses the same member names and meanings as \ref Vector (see "Shared
+	/// container vocabulary" there); its view type is \ref CStr. A `String` is
+	/// also a \ref FormatBuffer, so you can format straight into it:
+	/// `mlw_write(s, "{}: {}", key, value);`.
+	///
 	/// \par Layout (32 bytes on a 64-bit target)
 	///   `[ allocator* (8) ][ union { long | short } (24) ]`. A *long* string is
 	///   `{ char* ptr; usize len; usize cap; }` pointing at a heap block; a *short*
-	///   string stores up to \ref SSO_CAP bytes **inline** in the union with no
-	///   allocation. Which arm is live is read from the union's last byte — see
-	///   the tag note — so short strings (the common case) never touch the heap.
+	///   string stores up to \ref SSO_CAP bytes inline with no allocation.
 	///
 	/// \par The last-byte tag (little-endian)
 	///   The short arm's trailing byte holds `space_left = SSO_CAP - len`, always
 	///   in `0..SSO_CAP` (high bit clear). The long arm stores `cap` with its top
-	///   bit set (\ref LONG_MASK); on a little-endian target that top bit lands in
-	///   the very same trailing byte. So "is long?" is just the high bit of that
-	///   byte, read through an `unsigned char` (legal aliasing, not union punning).
-	///   \note Little-endian is assumed, consistent with \ref core::Map.
+	///   bit set (\ref LONG_MASK); on little-endian that bit lands in the same
+	///   trailing byte. So "is long?" is the high bit of that byte, read through
+	///   an `unsigned char` (legal aliasing, not union punning).
 	///
 	/// \par NUL termination
-	///   A NUL is maintained at `data()[len()]` as a **convenience** (cheap: the
-	///   short arm's `space_left == 0` doubles as the terminator at max length; the
-	///   heap arm reserves one extra byte). It is *not* the interface contract —
-	///   the canonical view is \ref operator CStr (pointer + length), which is how
-	///   you should pass a string anywhere. Treat `data()` as C-string-usable only
-	///   at the rare boundary that truly demands it.
+	///   A NUL is kept at `data()[len()]` as a convenience (at max short length
+	///   `space_left == 0` *is* that NUL; the heap block reserves one extra byte).
+	///   The real interface is the \ref CStr view (pointer + length).
+	///
+	/// \par Growth & aliasing
+	///   Same rules as \ref Vector: implicit growth is geometric, only
+	///   \ref reserve / \ref tryReserve are exact, and arguments may point into
+	///   this string (`s.append(s)`, `s.insert(0, s.slice(2, 3))` are fine).
 	///
 	/// \note Not copyable (use \ref clone); movable.
-	/// \note Not reference/pointer stable: any mutation that grows may relocate to
-	///       the heap (or move short->long), invalidating `data()`, \ref operator[]
-	///       results, and any \ref slice / \ref operator CStr taken earlier. Take a
-	///       fresh view after mutating.
-	/// \warning Because SSO makes `data()` point *into* the object, an SSO string is
-	///       **not trivially relocatable**. `String` has a real move ctor and is not
-	///       trivially copyable, so a `Vector<String>` automatically takes the
-	///       per-element move path — do not force a byte-move over strings.
+	/// \warning Views (`data()`, \ref slice, the \ref CStr conversion) are
+	///          invalidated by anything that grows. SSO also means a `String` is
+	///          not trivially relocatable; it has a real move constructor, so
+	///          containers move it element-wise automatically.
 	class String
 	{
-		/// \brief Inline capacity in bytes: the union is 24 wide, minus the 1-byte tag.
+		/// \brief Inline capacity in bytes: the 24-byte union minus the 1-byte tag.
 		static constexpr isize SSO_CAP = 23;
 		/// \brief Top-bit marker OR-ed into the long arm's `cap` to flag "is long".
 		static constexpr usize LONG_MASK = static_cast<usize>(1) << 63;
@@ -60,12 +60,12 @@ namespace core
 		{
 			char *ptr;
 			usize len;
-			usize cap; // stored as (real_cap | LONG_MASK)
+			usize cap; // real_cap | LONG_MASK
 		};
 		struct Short
 		{
 			char buf[SSO_CAP];
-			uint8 space_left; // SSO_CAP - len; high bit 0 => short. NUL when len==SSO_CAP.
+			uint8 space_left; // SSO_CAP - len; high bit 0 => short. Doubles as NUL at len == SSO_CAP.
 		};
 		union Repr
 		{
@@ -73,258 +73,300 @@ namespace core
 			Short s;
 		};
 
-		const AnonymousAllocator *allocator;
+		const AnonymousAllocator *alloc;
 		Repr u;
 
-		// -- tag / arm helpers ------------------------------------------------
+		// -- tag helpers ------------------------------------------------------
 
-		/// Last union byte via unsigned-char access (well-defined; no inactive read).
 		MLW_FORCE_INLINE unsigned char lastByte() const
 		{
 			return reinterpret_cast<const unsigned char *>(&u)[SSO_CAP];
 		}
 		MLW_FORCE_INLINE bool isLong() const { return (lastByte() & 0x80u) != 0; }
+		MLW_FORCE_INLINE isize longCap() const { return static_cast<isize>(u.l.cap & ~LONG_MASK); }
 
-		/// Reset to the empty short state (drops long ownership without freeing).
-		MLW_FORCE_INLINE void setEmptyShort()
+		/// Switch to the short arm holding `n <= SSO_CAP` bytes already in `u.s.buf`.
+		MLW_FORCE_INLINE void setShortLen(isize n)
 		{
-			u.s.space_left = static_cast<uint8>(SSO_CAP);
-			u.s.buf[0] = '\0';
+			u.s.space_left = static_cast<uint8>(SSO_CAP - n);
+			if (n < SSO_CAP)
+				u.s.buf[n] = '\0';
 		}
 
-		/// Set length and (re)write the maintained NUL. Branches on the live arm.
+		/// Set length on the live arm and rewrite the trailing NUL.
 		MLW_FORCE_INLINE void setLen(isize n)
 		{
 			if (isLong())
 			{
 				u.l.len = static_cast<usize>(n);
-				u.l.ptr[n] = '\0'; // heap reserves cap+1, always room
+				u.l.ptr[n] = '\0';
 			}
 			else
 			{
-				u.s.space_left = static_cast<uint8>(SSO_CAP - n);
-				if (n < SSO_CAP)
-					u.s.buf[n] = '\0'; // in-bounds
-									   // n == SSO_CAP: space_left == 0 IS the terminator at offset SSO_CAP
+				setShortLen(n);
 			}
 		}
 
-		/// Move storage to a larger `new_cap` usable bytes, preserving contents+len.
-		/// Long->long reallocs (bytes relocate freely); short->long allocs+copies+switches.
-		void growTo(isize new_cap)
+		// -- storage ----------------------------------------------------------
+
+		/// Move to a heap block with room for `new_cap` bytes (+1 for the NUL),
+		/// keeping contents. Returns false on OOM with the string unchanged.
+		bool tryGrowTo(isize new_cap)
 		{
-			mlw_debug_assert_msg(new_cap > capacity(), "String::growTo not growing");
-			const isize L = len();
+			const isize n = len();
 			if (isLong())
 			{
-				const isize old_cap = static_cast<isize>(u.l.cap & ~LONG_MASK);
-				void *p = allocator->realloc(allocator, u.l.ptr,
-											 old_cap + 1, new_cap + 1, alignof(char));
-				mlw_debug_assert_msg(p != nullptr, "String::growTo OOM");
+				void *p = alloc->realloc(alloc, u.l.ptr, longCap() + 1, new_cap + 1, alignof(char));
+				if (!p)
+					return false;
 				u.l.ptr = static_cast<char *>(p);
-				u.l.cap = static_cast<usize>(new_cap) | LONG_MASK;
-				// u.l.len unchanged; NUL at ptr[L] carried by the byte-copy realloc
 			}
 			else
 			{
-				void *p = allocator->realloc(allocator, nullptr, 0, new_cap + 1, alignof(char));
-				mlw_debug_assert_msg(p != nullptr, "String::growTo OOM");
-				char *np = static_cast<char *>(p);
-				core::mlwMemcpy(np, u.s.buf, static_cast<usize>(L)); // buf still active
-				np[L] = '\0';
-				u.l.ptr = np; // activates long arm
-				u.l.len = static_cast<usize>(L);
-				u.l.cap = static_cast<usize>(new_cap) | LONG_MASK;
-			}
-		}
-
-		/// Ensure capacity for `need` bytes, growing ~1.5x (or straight to need).
-		void ensureCap(isize need)
-		{
-			if (need <= capacity())
-				return;
-			isize nc = capacity() + capacity() / 2;
-			if (nc < need)
-				nc = need;
-			growTo(nc);
-		}
-
-		/// Populate a freshly-constructed String from a byte view.
-		void initFrom(CStr sv)
-		{
-			const isize n = static_cast<isize>(sv.len);
-			if (n <= SSO_CAP)
-			{
-				if (n > 0)
-					core::mlwMemcpy(u.s.buf, sv.ptr, static_cast<usize>(n)); // activates short
-				u.s.space_left = static_cast<uint8>(SSO_CAP - n);
-				if (n < SSO_CAP)
-					u.s.buf[n] = '\0';
-			}
-			else
-			{
-				void *p = allocator->realloc(allocator, nullptr, 0, n + 1, alignof(char));
-				mlw_debug_assert_msg(p != nullptr, "String ctor OOM");
-				char *np = static_cast<char *>(p);
-				core::mlwMemcpy(np, sv.ptr, static_cast<usize>(n));
-				np[n] = '\0';
-				u.l.ptr = np;
+				char *p = static_cast<char *>(alloc->realloc(alloc, nullptr, 0, new_cap + 1, alignof(char)));
+				if (!p)
+					return false;
+				mlwMemcpy(p, u.s.buf, static_cast<usize>(n) + 1); // + the NUL; read before u.l overwrites buf
+				u.l.ptr = p;
 				u.l.len = static_cast<usize>(n);
-				u.l.cap = static_cast<usize>(n) | LONG_MASK; // exact fit
 			}
+			u.l.cap = static_cast<usize>(new_cap) | LONG_MASK;
+			return true;
+		}
+
+		/// Ensure room for `need` bytes, growing geometrically. Panics on OOM.
+		void growFor(isize need)
+		{
+			const isize c = capacity();
+			if (need > c)
+				reserve(need > 2 * c ? need : 2 * c);
+		}
+
+		void freeHeap()
+		{
+			if (isLong())
+				alloc->realloc(alloc, u.l.ptr, longCap() + 1, 0, alignof(char));
+		}
+
+		void setEmptyShort() { setShortLen(0); }
+
+		/// True if `p` points into this string's bytes (so a grow would invalidate it).
+		bool ownsPtr(const char *p) const
+		{
+			const char *d = data();
+			return reinterpret_cast<uptr>(p) >= reinterpret_cast<uptr>(d) &&
+				   reinterpret_cast<uptr>(p) < reinterpret_cast<uptr>(d + len());
 		}
 
 	public:
 		// -- lifetime ---------------------------------------------------------
 
-		/// \brief Empty string on the default allocator (no allocation).
-		String() : allocator(&core::default_allocator()) { setEmptyShort(); }
+		/// \brief Empty string on the default allocator. Does not allocate.
+		String() : String(&core::default_allocator()) {}
 
-		/// \brief Empty string on \p alloc (no allocation).
-		explicit String(const AnonymousAllocator *alloc) : allocator(alloc) { setEmptyShort(); }
+		/// \brief Empty string on \p allocator. Does not allocate.
+		explicit String(const AnonymousAllocator *allocator) : alloc(allocator), u{} { setEmptyShort(); }
 
-		/// \brief Copy the bytes of \p sv (default allocator). The canonical inward path.
-		String(CStr sv) : allocator(&core::default_allocator()) { initFrom(sv); }
-
-		/// \brief Copy the bytes of \p sv onto \p alloc.
-		String(CStr sv, const AnonymousAllocator *alloc) : allocator(alloc) { initFrom(sv); }
-
-		/// \brief Copy a string literal / char array (default allocator).
-		/// \note Length is the array extent minus one — same rule (and caveats) as
-		///       \ref CStr's array constructor; use the \ref CStr overload for
-		///       partially-filled buffers or embedded NULs.
-		template <index_t N>
-		explicit String(const char (&lit)[N]) : allocator(&core::default_allocator())
+		/// \brief Copy the bytes of \p sv (a literal works: `String s("hi")`).
+		///        Allocates only if `sv.len > 23`, and then exactly.
+		String(CStr sv, const AnonymousAllocator *allocator = &core::default_allocator()) : String(allocator)
 		{
-			initFrom(CStr(lit));
+			if (sv.len > SSO_CAP)
+				reserve(sv.len);
+			append(sv);
 		}
 
 		String(const String &) = delete;
 		String &operator=(const String &) = delete;
 
-		/// \brief Move: steal \p o's storage; \p o is left empty and valid.
-		String(String &&o) : allocator(o.allocator), u(o.u) { o.setEmptyShort(); }
+		/// \brief Take \p o's storage. \post \p o is empty and valid.
+		String(String &&o) : alloc(o.alloc), u(o.u) { o.setEmptyShort(); }
 
-		/// \brief Move-assign: free ours, take \p o's. Self-assign is a no-op.
+		/// \brief Free ours, take \p o's. Self-assignment is a no-op.
 		String &operator=(String &&o)
 		{
 			if (this != &o)
 			{
-				deinit();
-				allocator = o.allocator;
+				freeHeap();
+				alloc = o.alloc;
 				u = o.u;
 				o.setEmptyShort();
 			}
 			return *this;
 		}
 
-		~String() { deinit(); }
+		~String() { freeHeap(); }
 
 		/// \brief Free heap storage (if any) and reset to empty. Idempotent.
 		void deinit()
 		{
-			if (isLong() && u.l.ptr != nullptr)
-			{
-				const isize cap = static_cast<isize>(u.l.cap & ~LONG_MASK);
-				allocator->realloc(allocator, u.l.ptr, cap + 1, 0, alignof(char));
-			}
+			freeHeap();
 			setEmptyShort();
 		}
 
 		/// \brief Independent deep copy on the same allocator.
-		String clone() const { return String(static_cast<CStr>(*this), allocator); }
+		String clone() const { return String(*this, alloc); }
 
-		// -- capacity ---------------------------------------------------------
+		/// \brief The allocator this string was built with.
+		const AnonymousAllocator *allocator() const { return alloc; }
 
-		/// \brief Length in bytes (excludes the maintained NUL).
+		// -- size & capacity --------------------------------------------------
+
+		/// \brief Length in bytes (excluding the maintained NUL).
 		MLW_FORCE_INLINE isize len() const
 		{
-			return isLong() ? static_cast<isize>(u.l.len)
-							: (SSO_CAP - static_cast<isize>(lastByte()));
+			return isLong() ? static_cast<isize>(u.l.len) : SSO_CAP - static_cast<isize>(lastByte());
 		}
 		bool isEmpty() const { return len() == 0; }
 
-		/// \brief Usable byte capacity before the next reallocation.
-		isize capacity() const
-		{
-			return isLong() ? static_cast<isize>(u.l.cap & ~LONG_MASK) : SSO_CAP;
-		}
+		/// \brief Bytes that fit before the next reallocation.
+		isize capacity() const { return isLong() ? longCap() : SSO_CAP; }
 
-		/// \brief Whether the bytes currently live inline (no heap allocation).
+		/// \brief Whether the bytes currently live inline (no heap block).
 		bool isInline() const { return !isLong(); }
 
-		/// \brief Ensure capacity for at least \p n bytes. Never shrinks. Panics on OOM.
-		void reserve(isize n)
+		/// \brief Ensure capacity for at least \p n bytes (exact). Never shrinks.
+		/// \return `false` on OOM, leaving the string unchanged.
+		bool tryReserve(isize n)
 		{
-			mlw_debug_assert_msg(n >= 0, "String::reserve negative");
-			if (n > capacity())
-				growTo(n);
+			mlw_debug_assert_msg(n >= 0, "String::reserve negative size");
+			return n <= capacity() || tryGrowTo(n);
 		}
 
+		/// \brief As \ref tryReserve, but panics on OOM.
+		void reserve(isize n)
+		{
+			const bool ok = tryReserve(n);
+			mlw_debug_assert_msg(ok, "String: out of memory");
+		}
+
+		/// \brief Drop unused capacity: moves back inline if it fits, otherwise
+		///        shrinks the heap block in place (never relocates).
+		void shrinkToFit()
+		{
+			if (!isLong())
+				return;
+			const isize n = len();
+			char *p = u.l.ptr;
+			const isize c = longCap();
+			if (n <= SSO_CAP)
+			{
+				mlwMemcpy(u.s.buf, p, static_cast<usize>(n));
+				setShortLen(n);
+				alloc->realloc(alloc, p, c + 1, 0, alignof(char));
+			}
+			else if (n < c)
+			{
+				alloc->realloc(alloc, p, c + 1, n + 1, alignof(char));
+				u.l.cap = static_cast<usize>(n) | LONG_MASK;
+			}
+		}
+
+		/// \brief Set length to 0, keeping the allocation.
+		void clear() { setLen(0); }
+
+		/// \brief Shrink to \p n bytes. No-op if `n >= len`.
+		void truncate(isize n)
+		{
+			mlw_debug_assert_msg(n >= 0, "String::truncate negative length");
+			if (n < len())
+				setLen(n);
+		}
+
+		/// \brief Resize to \p n bytes; new bytes are \p fill.
+		void resize(isize n, char fill = '\0')
+		{
+			const isize L = len();
+			if (n <= L)
+				return truncate(n);
+			growFor(n);
+			mlwMemset(data() + L, fill, static_cast<usize>(n - L));
+			setLen(n);
+		}
 
 		// -- access -----------------------------------------------------------
 
-		/// \brief Pointer to the bytes. NUL-terminated as a convenience; prefer
-		///        \ref operator CStr. \warning Invalidated by any growth.
+		/// \brief Pointer to the bytes (NUL-terminated as a convenience; prefer
+		///        the \ref CStr view). \warning Invalidated by growth.
 		char *data() { return isLong() ? u.l.ptr : u.s.buf; }
-		/// \copydoc data()
 		const char *data() const { return isLong() ? u.l.ptr : u.s.buf; }
 
 		/// \brief Non-owning view (pointer + length). The canonical way to pass a string.
-		operator CStr() const { return CStr(data(), static_cast<index_t>(len())); }
+		operator CStr() const { return CStr(data(), len()); }
 
-		/// \brief Unchecked byte access. \pre `0 <= i < len`.
+		/// \brief Byte access, bounds-checked in debug builds only.
 		char &operator[](isize i)
 		{
-			mlw_debug_assert_msg(i >= 0 && i < len(), "String::operator[] out of bounds");
+			mlw_debug_assert_msg(i >= 0 && i < len(), "String index {} out of range (len {})", i, len());
 			return data()[i];
 		}
-		/// \copydoc operator[](isize)
 		const char &operator[](isize i) const
 		{
-			mlw_debug_assert_msg(i >= 0 && i < len(), "String::operator[] out of bounds");
+			mlw_debug_assert_msg(i >= 0 && i < len(), "String index {} out of range (len {})", i, len());
 			return data()[i];
 		}
 
-		/// \brief Non-owning view of `[start, start+count)`.
-		/// \pre `0 <= start`, `0 <= count`, `start + count <= len`.
-		/// \warning Invalidated by any growth, like every other view into the string.
-		CStr slice(isize start, isize count) const
+		/// \brief Checked access: None if \p i is out of range (including negative).
+		Optional<char &> get(isize i)
 		{
-			mlw_debug_assert_msg(start >= 0 && count >= 0 && start + count <= len(),
-								 "String::slice out of range");
-			return CStr(data() + start, static_cast<index_t>(count));
+			if (i < 0 || i >= len())
+				return nullptr;
+			return Optional<char &>{data()[i]};
+		}
+		Optional<const char &> get(isize i) const
+		{
+			if (i < 0 || i >= len())
+				return nullptr;
+			return Optional<const char &>{data()[i]};
 		}
 
-		/// \brief gets the last character 
-		char& back() {return data()[len()-1];}
-		
-		/// \copydoc back()
-		char back() const {return data()[len()-1];}
+		/// \brief First / last byte, or None when empty.
+		Optional<char &> front() { return get(0); }
+		Optional<const char &> front() const { return get(0); }
+		Optional<char &> back() { return get(len() - 1); }
+		Optional<const char &> back() const { return get(len() - 1); }
+
+		/// \brief Non-owning view of `[start, start + count)`.
+		CStr slice(isize start, isize count) const
+		{
+			mlw_debug_assert_msg(start >= 0 && count >= 0 && start + count <= len(), "String::slice out of range");
+			return CStr(data() + start, count);
+		}
 
 		// -- modifiers --------------------------------------------------------
 
-		/// \brief Append one byte. Grows if needed; panics on OOM.
+		/// \brief Append one byte.
 		void push(char c)
 		{
 			const isize L = len();
-			ensureCap(L + 1);
+			growFor(L + 1);
 			data()[L] = c;
 			setLen(L + 1);
 		}
 
-		/// \brief Append the bytes of \p sv. Grows if needed; panics on OOM.
-		/// \warning \p sv must not alias this string's storage (a grow may relocate).
+		/// \brief Append \p sv (may be a view of this string).
 		void append(CStr sv)
 		{
-			const isize n = static_cast<isize>(sv.len);
-			if (n == 0)
+			const isize n = sv.len;
+			if (n <= 0)
 				return;
 			const isize L = len();
-			ensureCap(L + n);
-			core::mlwMemcpy(data() + L, sv.ptr, static_cast<usize>(n));
+			if (ownsPtr(sv.ptr)) // self-append: re-find the source after a possible move
+			{
+				const isize off = sv.ptr - data();
+				growFor(L + n);
+				sv.ptr = data() + off;
+			}
+			else
+			{
+				growFor(L + n);
+			}
+			mlwMemcpy(data() + L, sv.ptr, static_cast<usize>(n));
 			setLen(L + n);
 		}
+
+		/// \brief Same as \ref push; with \ref append(CStr) it makes String a \ref FormatBuffer.
+		void append(char c) { push(c); }
 
 		String &operator+=(CStr sv)
 		{
@@ -337,58 +379,97 @@ namespace core
 			return *this;
 		}
 
-		/// \brief Truncate to length 0, keeping the current allocation.
-		void clear() { setLen(0); }
-
-		void truncate(isize n){
-			if(n < len()){
-				setLen(n);
-			}
+		/// \brief Remove and return the last byte. \pre `!isEmpty()`.
+		char pop()
+		{
+			const isize L = len();
+			mlw_debug_assert_msg(L > 0, "String::pop on empty string");
+			const char c = data()[L - 1];
+			setLen(L - 1);
+			return c;
 		}
 
-		void resize(isize n){
-			isize length = len();
-			if (n < length)
-			{
-				truncate(n); // reuse: destroys [n, length), sets length = n
+		/// \brief Insert \p sv at byte \p i (may be a view of this string).
+		/// \pre `0 <= i <= len()`.
+		void insert(isize i, CStr sv)
+		{
+			const isize L = len();
+			mlw_debug_assert_msg(i >= 0 && i <= L, "String::insert index {} out of range (len {})", i, L);
+			if (sv.len <= 0)
 				return;
-			}
-			if (n > length)
+			if (ownsPtr(sv.ptr)) // the shift below would move the source under us
 			{
-				reserve(n); // ensure capacity (panics on OOM, like your other growers)
-				char* d = data();
-				for (isize i = length; i < n; ++i)
-					d[i] = '0';
-				setLen(n);
+				const String tmp(sv, alloc);
+				return insert(i, tmp);
 			}
+			growFor(L + sv.len);
+			char *d = data();
+			mlwMemmove(d + i + sv.len, d + i, static_cast<usize>(L - i));
+			mlwMemcpy(d + i, sv.ptr, static_cast<usize>(sv.len));
+			setLen(L + sv.len);
 		}
-		// -- compare ----------------------------------------------------------
 
-		bool operator==(const String &o) const { return bytesEqual(o.data(), o.len()); }
-		bool operator==(CStr sv) const { return bytesEqual(sv.ptr, static_cast<isize>(sv.len)); }
+		/// \brief Remove `[start, start + count)`, shifting the rest left.
+		void removeRange(isize start, isize count)
+		{
+			const isize L = len();
+			mlw_debug_assert_msg(start >= 0 && count >= 0 && start + count <= L, "String::removeRange out of range");
+			char *d = data();
+			mlwMemmove(d + start, d + start + count, static_cast<usize>(L - start - count));
+			setLen(L - count);
+		}
+
+		// -- search & compare -------------------------------------------------
+
+		/// \brief Byte offset of the first occurrence of \p needle, or None.
+		///        An empty needle matches at 0.
+		Optional<isize> find(CStr needle) const
+		{
+			const isize n = needle.len;
+			const isize L = len();
+			if (n == 0)
+			{
+				return Optional<isize>{static_cast<isize>(0)};
+			}
+			if (n > L)
+				return nullptr;
+			const char *d = data();
+			const char first = needle.ptr[0];
+			for (isize i = 0; i <= L - n; ++i)
+			{
+				if (d[i] != first) // cheap filter: most positions stop here
+					continue;
+				if (mlwMemcmp(d + i + 1, needle.ptr + 1, static_cast<usize>(n - 1)) == 0)
+					return Optional<isize>{i};
+			}
+			return nullptr;
+		}
+
+		bool contains(CStr needle) const { return find(needle).isSome(); }
+
+		bool startsWith(CStr prefix) const
+		{
+			return static_cast<CStr>(*this).startsWith(prefix);
+		}
+
+		bool endsWith(CStr suffix) const
+		{
+			return static_cast<CStr>(*this).endsWith(suffix);
+		}
+
+		/// \brief Byte-wise equality.
+		bool operator==(CStr sv) const { return CStr(*this) == sv; }
+		bool operator==(const String &o) const { return CStr(*this) == CStr(o); }
+
+		// -- format & iteration -----------------------------------------------
+
+		template <FormatBuffer Buffer>
+		void format(Buffer &buffer) const { buffer.append(CStr(*this)); }
 
 		char *begin() { return data(); }
 		char *end() { return data() + len(); }
 		const char *begin() const { return data(); }
 		const char *end() const { return data() + len(); }
-
-	private:
-		bool bytesEqual(const char *p, isize n) const
-		{
-			const isize L = len();
-			if (L != n)
-				return false;
-			const char *a = data();
-			for (isize i = 0; i < L; ++i)
-				if (a[i] != p[i])
-					return false;
-			return true;
-		}
-
-	public:
-		// -- format (mirrors Vector::format; depends on your FormatBuffer concept) --
-		template <FormatBuffer Buffer>
-		void format(Buffer &buffer) const { buffer.append(static_cast<CStr>(*this)); }
 	};
 
 	static_assert(sizeof(void *) == 8, "String's last-byte tag assumes a 64-bit target.");

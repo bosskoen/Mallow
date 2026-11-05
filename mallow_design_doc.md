@@ -23,7 +23,7 @@ threading, CRT bootstrap.
 - [ ] make libm constexpr
 - [ ] add __chkstk() and remove the fully commited stak
 - [ ] small mem* dont get optimised becous the compile doesnt see the mem* call
-- [ ] a thread error somewere in the memory alloc test 
+- [ ] leak detection
 
 
 ### entry
@@ -34,7 +34,6 @@ Runtime + program entry point; links `core` + `my_app` and produces the executab
 Container library; the STL replacement.
 - [ ] decide the initial container set + allocator story
 - [ ] make list sicrualr
-- [ ] make hashing containters
 - [ ] stress test stl
 - [ ] refrence stable unordered map or maby a uniqpointer stile thing
 - [ ] hashmap inserts doent move key
@@ -42,7 +41,6 @@ Container library; the STL replacement.
 
 ### io (file handling) — *planned*
 File read/write on top of core's io / writer.
-- [ ] path handling
 - [ ] clean up and ducoment stream and fs
 
 
