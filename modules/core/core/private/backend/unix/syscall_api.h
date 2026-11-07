@@ -806,7 +806,8 @@ enum : long
     PROT_READ = 0x1,
     PROT_WRITE = 0x2,
     PROT_EXEC = 0x4,
-} enum : long
+};
+enum : long
 {
     MAP_SHARED = 0x01,
     MAP_PRIVATE = 0x02,
@@ -816,12 +817,13 @@ enum : long
     MAP_NORESERVE = 0x4000,
     MAP_POPULATE = 0x8000,
     MAP_STACK = 0x20000,
-} enum : long
+};
+enum : long
 {
     MREMAP_MAYMOVE = 1,
     MREMAP_FIXED = 2,
     MREMAP_DONTUNMAP = 4,
-}
+};
 
 enum : long
 {
@@ -836,14 +838,14 @@ enum : long
     FUTEX_CLOCK_REALTIME = 256,
     FUTEX_WAIT_PRIVATE = (FUTEX_WAIT | FUTEX_PRIVATE_FLAG), // 128
     FUTEX_WAKE_PRIVATE = (FUTEX_WAKE | FUTEX_PRIVATE_FLAG), // 129
-}
+};
 
 enum : long
 {
     AT_PAGESZ = 6,
     AT_HWCAP = 16,
     AT_FDCWD = -100,
-}
+};
 
 enum : long
 {
@@ -856,10 +858,9 @@ enum : long
     CLONE_SETTLS = 0x00080000,
     CLONE_PARENT_SETTID = 0x00100000,
     CLONE_CHILD_CLEARTID = 0x00200000,
-}
+};
 
-static inline int
-is_err(long r)
+static inline long is_err(long r)
 {
     return r < 0 && r > -4096;
 }
