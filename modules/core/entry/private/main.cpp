@@ -3,7 +3,7 @@
 #include <core/memory/galloc.h>
 #include <core/libc/mem.h>
 
-#include "core/../../private/crt_internals.h"
+#include "core/../../private/backend/unix/crt_internals.h"
 
 #include <core/proc_context.h>
 
