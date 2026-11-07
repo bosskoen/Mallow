@@ -13,7 +13,7 @@
 #include "core/thread/lock.h"
 #include "core/thread/candvar.h"
 #include "core/thread/atomic.h"
-#include "../posix/syscall_api.h"
+#include "backend/unix/syscall_api.h"
 
 // ════════════════════════════════════════════════════════════════════════
 // 1. Global constructors — walk .init_array (Itanium/ELF & MinGW)
